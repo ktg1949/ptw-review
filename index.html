@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>안전작업허가서 AI 검토 시스템 v7</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;}
+  input,select,button{font-family:inherit;}
+  button:focus{outline:none;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+// ── 설정 ─────────────────────────────────────────────────
+const C = {
+  navy:"#0d1b2a", navyMid:"#1a2d42", navyLt:"#243b55",
+  accent:"#1e88e5", gold:"#f59e0b",
+  text:"#e8edf2", textSub:"#8fa3b8", border:"#2a3f57",
+  bg:"#f5f7fa", cardBg:"#ffffff",
+  green:"#16a34a", greenBg:"#dcfce7", greenBorder:"#86efac",
+  red:"#dc2626", redBg:"#fee2e2", redBorder:"#fca5a5",
+  amber:"#d97706", amberBg:"#fef3c7", amberBorder:"#fcd34d",
+  gray:"#6b7280", grayBg:"#f3f4f6", grayBorder:"#d1d5db",
+};
+
+const CATEGORIES = [
+  {id:"psm",      emoji:"🛡️",label:"PSM 안전작업 허가서",     color:"#185FA5",bg:"#E6F1FB",border:"#bcd9f7"},
+  {id:"hazmat",   emoji:"⚗️", label:"유해물질 취급 안전작업",  color:"#0F6E56",bg:"#E1F5EE",border:"#a9e3d2"},
+  {id:"hotwork",  emoji:"🔥", label:"화기 안전작업 허가서",     color:"#C2410C",bg:"#FFEDD5",border:"#fdba74"},
+  {id:"heavy",    emoji:"🏗️",label:"중장비 안전작업 허가서",  color:"#854F0B",bg:"#FAEEDA",border:"#f3d9a4"},
+  {id:"height",   emoji:"⬆️", label:"고소 안전작업 허가서",     color:"#1D4ED8",bg:"#DBEAFE",border:"#93c5fd"},
+  {id:"confined", emoji:"📦", label:"밀폐공간 안전작업 허가서",color:"#6D28D9",bg:"#EDE9FE",border:"#c4b5fd"},
+  {id:"electric", emoji:"⚡", label:"전기 안전작업 허가서",     color:"#A16207",bg:"#FEF3C7",border:"#fcd34d"},
+];
+
+const TAG_COLORS = {
+  "①안전작업허가서":    {bg:"#dcfce7",color:"#166534",border:"#86efac"},
+  "②위험성평가":        {bg:"#e0f2fe",color:"#0369a1",border:"#7dd3fc"},
+  "③LOTO 체결/해제":    {bg:"#fef3c7",color:"#92400e",border:"#fcd34d"},
+  "④안전작업계획서":    {bg:"#fee2e2",color:"#991b1b",border:"#fca5a5"},
+  "⑤TBM 일지":          {bg:"#ede9fe",color:"#5b21b6",border:"#c4b5fd"},
+  "⑤가스농도측정기록지":{bg:"#fef9c3",color:"#713f12",border:"#fde047"},
+  "⑥안전점검표":        {bg:"#d1fae5",color:"#065f46",border:"#6ee7b7"},
+  "⑥밀폐공간출입기록지":{bg:"#ffe4e6",color:"#9f1239",border:"#fda4af"},
+  "⑦PSM 예방점검표":    {bg:"#ffedd5",color:"#9a3412",border:"#fdba74"},
+  "⑦안전감시자지정서":  {bg:"#ffedd5",color:"#9a3412",border:"#fdba74"},
+  "⑦교육결과":          {bg:"#dcfce7",color:"#14532d",border:"#86efac"},
+  "⑧TBM 일지":          {bg:"#ede9fe",color:"#5b21b6",border:"#c4b5fd"},
+  "⑨안전점검표":        {bg:"#d1fae5",color:"#065f46",border:"#6ee7b7"},
+  "⑩안전감시자지정서":  {bg:"#ffedd5",color:"#9a3412",border:"#fdba74"},
+  "⑪프로그램평가표":    {bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},
+};
+const DTC = {bg:"#f1f5f9",color:"#475569",border:"#cbd5e1"};
+const SC = {
+  pass:   {bg:C.greenBg, text:C.green, border:C.greenBorder, label:"적합"},
+  fail:   {bg:C.redBg,   text:C.red,   border:C.redBorder,   label:"누락/미비"},
+  na:     {bg:C.grayBg,  text:C.gray,  border:C.grayBorder,  label:"해당없음"},
+  unknown:{bg:C.amberBg, text:C.amber, border:C.amberBorder, label:"미검토"},
+};
+
+function getTag(label){var m=label.match(/^\[(.+?)\]/);return m?m[1]:"기타";}
+function getText(label){return label.replace(/^\[.+?\]\s*/,"");}
+
+// 스토리지 (localStorage 사용)
+const UK="ptw_v7_users", HK="ptw_v7_history";
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+const INIT_ADMIN={id:"admin",name:"관리자",password:"admin1234",role:"admin",status:"active",createdAt:new Date().toISOString()};
+
+// ── 검토 항목 (간략화 버전 - 실제 항목은 아티팩트와 동일) ──
+const CRITERIA = {
+  psm:[
+    {id:"psm_p1",label:"[①안전작업허가서] 결재 서명(팀장·담당 등) 기재 여부"},
+    {id:"psm_p2",label:"[①안전작업허가서] 일반작업 허가 공통사항 체크 완료"},
+    {id:"psm_p3",label:"[①안전작업허가서] 첨부서류 확인 표시 여부"},
+    {id:"psm_p4",label:"[①안전작업허가서] 작업 완료 후 서명 기재"},
+    {id:"psm_p5",label:"[①안전작업허가서] 필수 빈칸(허가기간·작업인원·PTW No.) 없음"},
+    {id:"psm_j1",label:"[②위험성평가] PTW No·작업일·작업내용·작성자 기재 여부"},
+    {id:"psm_j2",label:"[②위험성평가] 안전보호구 및 안전장구 체크 완료"},
+    {id:"psm_j3",label:"[②위험성평가] 작업단계(Step) 5단계 이상 상세 작성"},
+    {id:"psm_j4",label:"[②위험성평가] 유해위험요인 및 안전대책 구체적 작성"},
+    {id:"psm_j5",label:"[②위험성평가] 조치담당·현장확인·참여자 서명 완료"},
+    {id:"psm_l1",label:"[③LOTO 체결/해제] LOTO 발행번호·작업지시서 No. 기재"},
+    {id:"psm_l2",label:"[③LOTO 체결/해제] 대상설비·작업명·기간·위치·내용 기재"},
+    {id:"psm_l3",label:"[③LOTO 체결/해제] 기기조작 및 체결·해제 서명 기재"},
+    {id:"psm_pl1",label:"[④안전작업계획서] 작업개요 기재"},
+    {id:"psm_pl2",label:"[④안전작업계획서] 관리감독자 서명 기재"},
+    {id:"psm_pl3",label:"[④안전작업계획서] 확인 항목 유/무 기재"},
+    {id:"psm_t1",label:"[⑤TBM 일지] 관리감독자 서명 기재"},
+    {id:"psm_t2",label:"[⑤TBM 일지] 유해위험요인 및 안전대책 기재"},
+    {id:"psm_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"psm_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명 기재"},
+    {id:"psm_c2",label:"[⑥안전점검표] 안전점검 CHECK LIST 체크 완료"},
+    {id:"psm_e1",label:"[⑦PSM 예방점검표] 점검자 서명 기재"},
+    {id:"psm_e2",label:"[⑦PSM 예방점검표] 점검결과 표시 완료"},
+    {id:"psm_e3",label:"[⑦PSM 예방점검표] 개선조치 내용 기재(해당 시)"},
+  ],
+  hazmat:[
+    {id:"haz_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"haz_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"haz_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"haz_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"haz_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
+    {id:"haz_j1",label:"[②위험성평가] 작성자 정보 기재 여부"},
+    {id:"haz_j2",label:"[②위험성평가] 보호구 체크 완료"},
+    {id:"haz_j3",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"haz_j4",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"haz_j5",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"haz_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"haz_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"haz_pl1",label:"[④안전작업계획서] 작업개요 기재"},
+    {id:"haz_pl2",label:"[④안전작업계획서] 관리감독자 서명"},
+    {id:"haz_pl3",label:"[④안전작업계획서] 취급화학물질 체크 및 작업절차 기재"},
+    {id:"haz_t1",label:"[⑤TBM 일지] 관리감독자 서명"},
+    {id:"haz_t2",label:"[⑤TBM 일지] 유해위험요인·안전대책 기재"},
+    {id:"haz_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"haz_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명"},
+    {id:"haz_c2",label:"[⑥안전점검표] 유해물질 종류 체크 완료"},
+    {id:"haz_c3",label:"[⑥안전점검표] MSDS·교육·보호구 등 체크 완료"},
+    {id:"haz_c4",label:"[⑥안전점검표] 부적정 조치사항 기재"},
+  ],
+  hotwork:[
+    {id:"hot_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"hot_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"hot_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"hot_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hot_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
+    {id:"hot_j1",label:"[②위험성평가] 작성자 정보 기재"},
+    {id:"hot_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"hot_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"hot_j4",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"hot_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"hot_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"hot_pl1",label:"[④안전작업계획서] 작업명·작성자·내용 기재"},
+    {id:"hot_pl2",label:"[④안전작업계획서] 작업절차 및 위험요소·안전조치 기재"},
+    {id:"hot_t1",label:"[⑤TBM 일지] 관리감독자 서명"},
+    {id:"hot_t2",label:"[⑤TBM 일지] 유해위험요인·안전대책 기재"},
+    {id:"hot_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"hot_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명"},
+    {id:"hot_c2",label:"[⑥안전점검표] 작업종류 체크 완료"},
+    {id:"hot_c3",label:"[⑥안전점검표] 역화방지·비산방지·화재감시자·가스측정 체크"},
+    {id:"hot_c4",label:"[⑥안전점검표] 가스농도 측정값 기록"},
+    {id:"hot_w1",label:"[⑦안전감시자지정서] 작업명·업체명 기재"},
+    {id:"hot_w2",label:"[⑦안전감시자지정서] 감시자 인적사항·서명 기재"},
+  ],
+  heavy:[
+    {id:"hvy_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"hvy_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"hvy_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"hvy_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hvy_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
+    {id:"hvy_j1",label:"[②위험성평가] 작성자 정보 기재"},
+    {id:"hvy_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"hvy_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"hvy_j4",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"hvy_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"hvy_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"hvy_pl1",label:"[④안전작업계획서] 작업개요·중량물·건설기계 정보 기재"},
+    {id:"hvy_pl2",label:"[④안전작업계획서] 지반·지장물 현황 및 운행경로 기재"},
+    {id:"hvy_pl3",label:"[④안전작업계획서] 작업계획도 작성"},
+    {id:"hvy_t1",label:"[⑤TBM 일지] 관리감독자 서명"},
+    {id:"hvy_t2",label:"[⑤TBM 일지] 유해위험요인·안전대책 기재"},
+    {id:"hvy_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"hvy_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명"},
+    {id:"hvy_c2",label:"[⑥안전점검표] 크레인 안전점검 체크 완료"},
+    {id:"hvy_w1",label:"[⑦안전감시자지정서] 작업명·업체명·감시자 인적사항 기재"},
+    {id:"hvy_w2",label:"[⑦안전감시자지정서] 작업책임자 서명 기재"},
+  ],
+  height:[
+    {id:"hgt_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"hgt_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"hgt_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"hgt_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hgt_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
+    {id:"hgt_j1",label:"[②위험성평가] 작성자 정보 기재"},
+    {id:"hgt_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"hgt_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"hgt_j4",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"hgt_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"hgt_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"hgt_pl1",label:"[④안전작업계획서] 작업개요 기재"},
+    {id:"hgt_pl2",label:"[④안전작업계획서] 안전보건교육·보호구 계획 기재"},
+    {id:"hgt_pl3",label:"[④안전작업계획서] 작업순서 및 위험요소·안전대책 기재"},
+    {id:"hgt_t1",label:"[⑤TBM 일지] 관리감독자 서명"},
+    {id:"hgt_t2",label:"[⑤TBM 일지] 유해위험요인·안전대책 기재"},
+    {id:"hgt_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"hgt_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명"},
+    {id:"hgt_c2",label:"[⑥안전점검표] 고소작업 안전점검 체크 완료"},
+  ],
+  confined:[
+    {id:"cnf_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"cnf_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"cnf_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"cnf_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"cnf_j1",label:"[②위험성평가] 작성자 정보 기재"},
+    {id:"cnf_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"cnf_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"cnf_j4",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"cnf_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"cnf_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"cnf_pl1",label:"[④안전작업계획서] 작업정보 및 사전 안전조치 기재"},
+    {id:"cnf_pl2",label:"[④안전작업계획서] 작업자 정보·보호구·측정장비 기재"},
+    {id:"cnf_g1",label:"[⑤가스농도측정기록지] 측정자·확인자 서명 기재"},
+    {id:"cnf_g2",label:"[⑤가스농도측정기록지] 가스 농도 측정값 기재"},
+    {id:"cnf_in1",label:"[⑥밀폐공간출입기록지] 출입자 성명·출입시간·감시인 확인 기재"},
+    {id:"cnf_ed1",label:"[⑦교육결과] 교육일자·참가자 서명·관리감독자 서명 기재"},
+    {id:"cnf_t1",label:"[⑧TBM 일지] 관리감독자 서명"},
+    {id:"cnf_t2",label:"[⑧TBM 일지] 참석자 서명 완료"},
+    {id:"cnf_c1",label:"[⑨안전점검표] 밀폐공간 안전점검 체크 완료"},
+    {id:"cnf_c2",label:"[⑨안전점검표] 작업책임자·감독자 서명"},
+    {id:"cnf_w1",label:"[⑩안전감시자지정서] 감시자 인적사항·서명 기재"},
+    {id:"cnf_ev1",label:"[⑪프로그램평가표] 평가항목 체크 완료"},
+    {id:"cnf_ev2",label:"[⑪프로그램평가표] 평가자 서명 기재"},
+  ],
+  electric:[
+    {id:"elc_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
+    {id:"elc_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
+    {id:"elc_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
+    {id:"elc_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"elc_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
+    {id:"elc_j1",label:"[②위험성평가] 작성자 정보 기재"},
+    {id:"elc_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
+    {id:"elc_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
+    {id:"elc_j4",label:"[②위험성평가] 참여자 서명 완료"},
+    {id:"elc_l1",label:"[③LOTO 체결/해제] LOTO 발행번호 기재"},
+    {id:"elc_l2",label:"[③LOTO 체결/해제] 기기조작 및 서명 기재"},
+    {id:"elc_pl1",label:"[④안전작업계획서] 작업개요 기재"},
+    {id:"elc_pl2",label:"[④안전작업계획서] 작업순서·위험요소·안전대책 기재"},
+    {id:"elc_pl3",label:"[④안전작업계획서] 첨부자료 체크 완료"},
+    {id:"elc_t1",label:"[⑤TBM 일지] 관리감독자 서명"},
+    {id:"elc_t2",label:"[⑤TBM 일지] 유해위험요인·안전대책 기재"},
+    {id:"elc_t3",label:"[⑤TBM 일지] 참석자 서명 완료"},
+    {id:"elc_c1",label:"[⑥안전점검표] 작업책임자·감독자 서명"},
+    {id:"elc_c2",label:"[⑥안전점검표] 전기작업 안전점검 체크 완료"},
+    {id:"elc_c3",label:"[⑥안전점검표] 부적정 조치사항 기재"},
+    {id:"elc_w1",label:"[⑦안전감시자지정서] 감시자 인적사항·서명 기재"},
+  ],
+};
+
+function toBase64(file) {
+  return new Promise(function(res,rej) {
+    if(file.type==="application/pdf") {
+      var r=new FileReader();
+      r.onload=function(){res(r.result.split(",")[1]);};
+      r.onerror=rej; r.readAsDataURL(file); return;
+    }
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function() {
+      var MAX=800,w=img.width,h=img.height;
+      if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+      var cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+      cv.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(cv.toDataURL("image/jpeg",0.6).split(",")[1]);
+    };
+    img.onerror=rej; img.src=url;
+  });
+}
+
+// ── 메인 앱 ──────────────────────────────────────────────
+function App() {
+  const [screen, setScreen] = React.useState("login");
+  const [currentUser, setCurrentUser] = React.useState(null);
+  const [users, setUsers] = React.useState([]);
+  const [history, setHistory] = React.useState([]);
+  const [selCat, setSelCat] = React.useState(null);
+  const [files, setFiles] = React.useState([]);
+  const [loadMsg, setLoadMsg] = React.useState("");
+  const [reviewResults, setReviewResults] = React.useState({});
+  const [reviewNotes, setReviewNotes] = React.useState({});
+  const [reviewSummary, setReviewSummary] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [activeGroup, setActiveGroup] = React.useState(null);
+  const [apiKey, setApiKey] = React.useState(localStorage.getItem("ptw_apikey")||"");
+  const fileRef = React.useRef();
+
+  React.useEffect(function() {
+    var u = lsGet(UK) || [];
+    if (!u.find(function(x){return x.id==="admin";})) {
+      u = [INIT_ADMIN].concat(u);
+      lsSet(UK, u);
+    }
+    setUsers(u);
+    setHistory(lsGet(HK) || []);
+  }, []);
+
+  function saveUsers(u) { setUsers(u); lsSet(UK, u); }
+  function saveHistory(h) { setHistory(h); lsSet(HK, h); }
+  function saveApiKey(k) { setApiKey(k); localStorage.setItem("ptw_apikey", k); }
+
+  function startReview(catId) {
+    if (!apiKey) { alert("API 키를 먼저 설정해 주세요."); return; }
+    setSelCat(catId); setFiles([]); setReviewResults({});
+    setReviewNotes({}); setReviewSummary(""); setError("");
+    setActiveGroup(null); setScreen("review");
+  }
+
+  async function analyze() {
+    if (!files.length) return;
+    setError(""); setScreen("loading_review");
+    var msgs = ["문서 업로드 중...","이미지 분석 중...","체크리스트 매핑 중...","누락 항목 검증 중...","결과 생성 중..."];
+    var mi = 0; setLoadMsg(msgs[0]);
+    var iv = setInterval(function(){ mi=(mi+1)%msgs.length; setLoadMsg(msgs[mi]); }, 1800);
+    try {
+      var limitedFiles = files.slice(0,3);
+      var parts = [];
+      for (var i=0; i<limitedFiles.length; i++) {
+        var f = limitedFiles[i];
+        var b64 = await toBase64(f);
+        parts.push(f.type==="application/pdf"
+          ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}}
+          : {type:"image",    source:{type:"base64", media_type:"image/jpeg", data:b64}});
+      }
+      var cat = CATEGORIES.find(function(c){return c.id===selCat;});
+      var crit = (CRITERIA[selCat]||[]).map(function(i,idx){return (idx+1)+". "+getText(i.label)+" ["+i.id+"]";}).join("\n");
+      parts.push({type:"text", text:"산업안전 문서 검토 전문가로서 ["+cat.label+"] 문서를 분석하세요.\nstatus: pass=기재완료, fail=누락/불완전, na=해당없음\n\n검토항목:\n"+crit+"\n\nJSON만 출력:\n{\"results\":{\"id\":{\"status\":\"pass|fail|na\",\"note\":\"10자이내\"}},\"summary\":\"50자이내\"}"});
+
+      var resp, att = 0;
+      while (att < 5) {
+        att++;
+        if(att===1) await new Promise(function(r){setTimeout(r,300);});
+        resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST",
+          headers:{"Content-Type":"application/json", "x-api-key":apiKey, "anthropic-version":"2023-06-01"},
+          body:JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:3000, messages:[{role:"user", content:parts}]})
+        });
+        if (resp.status===429||resp.status===529||resp.status===503) {
+          var wait = att===1?5000:att===2?10000:att===3?20000:30000;
+          setLoadMsg("요청 한도 초과 — "+att+"회 재시도 ("+Math.round(wait/1000)+"초 대기)");
+          await new Promise(function(r){setTimeout(r,wait);});
+          continue;
+        }
+        break;
+      }
+      if (!resp.ok) throw new Error("API "+resp.status);
+      var data = await resp.json();
+      var raw = (data.content||[]).map(function(c){return c.text||"";}).join("");
+      var clean = raw.replace(/```json|```/g,"").trim();
+      if(!clean.endsWith("}")) {
+        var lb = clean.lastIndexOf("},");
+        clean = lb>0 ? clean.substring(0,lb+1)+"}},\"summary\":\"검토 완료\"}" : "{\"results\":{},\"summary\":\"다시 시도해 주세요\"}";
+      }
+      var parsed;
+      try { parsed = JSON.parse(clean); }
+      catch(e) { parsed = {results:{}, summary:"일부 항목만 분석됨"}; }
+
+      var r={}, n={};
+      Object.entries(parsed.results||{}).forEach(function(entry){
+        r[entry[0]]=entry[1].status||"unknown";
+        if(entry[1].note) n[entry[0]]=entry[1].note;
+      });
+      setReviewResults(r); setReviewNotes(n); setReviewSummary(parsed.summary||"");
+      var items = CRITERIA[selCat]||[];
+      setActiveGroup(items.length?getTag(items[0].label):null);
+      var entry2 = {id:Date.now(), user:currentUser.name, category:cat.label, catId:cat.id, date:new Date().toLocaleString("ko-KR"), results:r, summary:parsed.summary||""};
+      saveHistory([entry2].concat(history).slice(0,100));
+      clearInterval(iv); setScreen("result");
+    } catch(e) {
+      clearInterval(iv); setError("분석 오류: "+e.message); setScreen("error");
+    }
+  }
+
+  // ── 화면 렌더링 ──────────────────────────────────────
+  if (screen==="login"||screen==="register") {
+    return <AuthScreen screen={screen} setScreen={setScreen} users={users}
+      apiKey={apiKey} onSaveApiKey={saveApiKey}
+      onLogin={function(u){setCurrentUser(u);setScreen("main");}}
+      onRegister={function(u){saveUsers(u);setScreen("login");}}/>;
+  }
+  if (screen==="loading_review") {
+    var lcat=CATEGORIES.find(function(c){return c.id===selCat;});
+    return <LoadingScreen msg={loadMsg} cat={lcat}/>;
+  }
+  if (screen==="admin") {
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin"/>
+      <AdminContent users={users} history={history} onSave={saveUsers} onBack={function(){setScreen("main");}}/>
+    </div>;
+  }
+  if (screen==="error") {
+    var ecat=CATEGORIES.find(function(c){return c.id===selCat;});
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{maxWidth:480,width:"100%",padding:"2rem",textAlign:"center"}}>
+          <div style={{fontSize:56,marginBottom:"1rem"}}>⚠️</div>
+          <h2 style={{fontSize:20,fontWeight:700,color:C.navy,margin:"0 0 10px"}}>분석 오류</h2>
+          <div style={{background:C.redBg,border:"1px solid "+C.redBorder,borderRadius:10,padding:"12px 16px",marginBottom:"1.5rem"}}>
+            <p style={{margin:0,fontSize:13,color:C.red}}>{error}</p>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={function(){setError("");setFiles([]);setScreen("review");}} style={{padding:"10px 24px",borderRadius:9,border:"none",background:ecat?ecat.color:C.accent,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>🔄 다시 시도</button>
+            <button onClick={function(){setError("");setFiles([]);setReviewResults({});setSelCat(null);setScreen("main");}} style={{padding:"10px 24px",borderRadius:9,border:"1px solid "+C.accent,background:"#fff",color:C.accent,fontSize:14,fontWeight:700,cursor:"pointer"}}>🏠 메인으로</button>
+          </div>
+        </div>
+      </div>
+    </div>;
+  }
+  if (screen==="review") {
+    var rcat=CATEGORIES.find(function(c){return c.id===selCat;});
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
+        <div style={{maxWidth:720}}>
+          <button onClick={function(){setScreen("main");}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13,marginBottom:"1rem"}}>← 메인으로</button>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem"}}>
+            <span style={{fontSize:28}}>{rcat.emoji}</span>
+            <div><h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>{rcat.label}</h2>
+            <p style={{margin:0,fontSize:12,color:C.gray}}>PDF 또는 이미지 업로드 후 AI 자동 검토</p></div>
+          </div>
+          <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{background:C.navyMid,padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>📁 문서 업로드 (최대 3개)</span></div>
+            <div style={{padding:"1.25rem"}}>
+              <div onClick={function(){fileRef.current.click();}}
+                onDragOver={function(e){e.preventDefault();}}
+                onDrop={function(e){e.preventDefault();var a=Array.from(e.dataTransfer.files).filter(function(f){return f.type==="application/pdf"||f.type.startsWith("image/");});setFiles(function(p){return p.concat(a).slice(0,3);});}}
+                style={{border:"1.5px dashed "+C.accent+"55",borderRadius:10,padding:"1.5rem",textAlign:"center",cursor:"pointer"}}>
+                <div style={{fontSize:30,marginBottom:6}}>📁</div>
+                <p style={{margin:"0 0 2px",fontWeight:600,color:C.navy,fontSize:13}}>PDF 또는 이미지를 드래그하거나 클릭하여 업로드</p>
+                <p style={{margin:0,fontSize:12,color:C.gray}}>최대 3개 파일</p>
+                <input ref={fileRef} type="file" multiple accept=".pdf,image/*" style={{display:"none"}} onChange={function(e){var a=Array.from(e.target.files).filter(function(f){return f.type==="application/pdf"||f.type.startsWith("image/");});setFiles(function(p){return p.concat(a).slice(0,3);});}}/>
+              </div>
+              {files.length>0&&<div style={{marginTop:8}}>{files.map(function(f,i){return (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginTop:5,background:C.bg,borderRadius:7,border:"1px solid #e5e7eb"}}>
+                  <span>{f.type==="application/pdf"?"📄":"🖼️"}</span>
+                  <span style={{flex:1,fontSize:12,color:C.navy}}>{f.name}</span>
+                  <span style={{fontSize:11,color:C.gray}}>{(f.size/1024).toFixed(0)}KB</span>
+                  <button onClick={function(){setFiles(function(p){return p.filter(function(_,j){return j!==i;});});}} style={{background:"none",border:"none",cursor:"pointer",color:C.gray}}>✕</button>
+                </div>
+              );})}</div>}
+            </div>
+          </div>
+          <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{background:C.navyMid,padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>📝 검토 항목 ({(CRITERIA[selCat]||[]).length}개)</span></div>
+            <CriteriaTagView items={CRITERIA[selCat]||[]}/>
+          </div>
+          <button onClick={analyze} disabled={!files.length} style={{width:"100%",padding:12,borderRadius:10,border:"none",fontSize:14,fontWeight:700,cursor:files.length?"pointer":"not-allowed",background:files.length?rcat.color:"#cbd5e1",color:"#fff"}}>🤖 AI 자동 검토 시작</button>
+        </div>
+      </div>
+    </div>;
+  }
+  if (screen==="result") {
+    var rescat=CATEGORIES.find(function(c){return c.id===selCat;});
+    var ritems=CRITERIA[selCat]||[];
+    var counts={pass:0,fail:0,na:0,unknown:0};
+    ritems.forEach(function(i){var s=reviewResults[i.id]||"unknown";counts[s]++;});
+    var rgroups=[],rgMap={};
+    ritems.forEach(function(i){var t=getTag(i.label);if(!rgMap[t]){rgMap[t]=[];rgroups.push({tag:t,items:rgMap[t]});}rgMap[t].push(i);});
+    var curGroup=rgroups.find(function(g){return g.tag===activeGroup;})||rgroups[0];
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
+        <div style={{maxWidth:720}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:28}}>{rescat.emoji}</span>
+              <div><h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>{rescat.label}</h2>
+              <p style={{margin:0,fontSize:12,color:C.gray}}>AI 검토 완료</p></div>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={function(){setScreen("main");}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid "+rescat.color,background:"#fff",color:rescat.color,fontSize:12,cursor:"pointer",fontWeight:600}}>🏠 메인</button>
+              <button onClick={function(){startReview(selCat);}} style={{padding:"6px 12px",borderRadius:7,border:"none",background:rescat.color,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600}}>🔄 재검토</button>
+            </div>
+          </div>
+          {reviewSummary&&<div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",borderRadius:10,padding:"10px 16px",marginBottom:"1rem",display:"flex",gap:8}}>
+            <span>💡</span><p style={{margin:0,fontSize:13,color:C.text,lineHeight:1.7}}>{reviewSummary}</p>
+          </div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:"1rem"}}>
+            {[["pass","적합",counts.pass],["fail","누락/미비",counts.fail],["na","해당없음",counts.na],["unknown","미검토",counts.unknown]].map(function(arr){
+              return <div key={arr[0]} style={{background:SC[arr[0]].bg,border:"1px solid "+SC[arr[0]].border,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+                <div style={{fontSize:24,fontWeight:700,color:SC[arr[0]].text}}>{arr[2]}</div>
+                <div style={{fontSize:11,color:SC[arr[0]].text,marginTop:2}}>{arr[1]}</div>
+              </div>;
+            })}
+          </div>
+          {rgroups.length>1&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:"1rem"}}>
+            {rgroups.map(function(g){
+              var gp=g.items.filter(function(i){return reviewResults[i.id]==="pass";}).length;
+              var gf=g.items.filter(function(i){return reviewResults[i.id]==="fail";}).length;
+              var tc=TAG_COLORS[g.tag]||DTC;
+              var isSel=curGroup&&curGroup.tag===g.tag;
+              return <button key={g.tag} onClick={function(){setActiveGroup(g.tag);}} style={{padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:isSel?700:400,cursor:"pointer",background:isSel?tc.bg:"#fff",color:isSel?tc.color:C.gray,border:"1px solid "+(isSel?tc.border:"#e5e7eb"),display:"flex",alignItems:"center",gap:4}}>
+                {gf>0&&<span style={{width:6,height:6,borderRadius:"50%",background:C.red,display:"inline-block"}}/>}
+                {g.tag} {gp}/{g.items.length}
+              </button>;
+            })}
+          </div>}
+          <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",overflow:"hidden"}}>
+            <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px",display:"flex",justifyContent:"space-between"}}>
+              <span style={{color:C.text,fontWeight:600,fontSize:13}}>{curGroup?curGroup.tag:""}</span>
+              <span style={{color:C.textSub,fontSize:12}}>적합 {curGroup?curGroup.items.filter(function(i){return reviewResults[i.id]==="pass";}).length:0} / {curGroup?curGroup.items.length:0}</span>
+            </div>
+            {(curGroup?curGroup.items:[]).map(function(item,idx,arr){
+              var s=reviewResults[item.id]||"unknown";
+              return <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:idx<arr.length-1?"1px solid #f3f4f6":"none",background:s==="fail"?"#fff8f8":"#fff"}}>
+                <div style={{flex:1}}>
+                  <p style={{margin:0,fontSize:13,color:C.navy,fontWeight:500}}>{getText(item.label)}</p>
+                  {reviewNotes[item.id]&&<p style={{margin:"2px 0 0",fontSize:11,color:C.gray}}>{reviewNotes[item.id]}</p>}
+                </div>
+                <span style={{padding:"4px 12px",borderRadius:6,fontSize:12,fontWeight:700,background:SC[s].bg,color:SC[s].text,border:"1px solid "+SC[s].border,flexShrink:0}}>{SC[s].label}</span>
+              </div>;
+            })}
+          </div>
+        </div>
+      </div>
+    </div>;
+  }
+  // MAIN
+  var myHist=history.filter(function(h){return currentUser&&currentUser.role!=="admin"?h.user===currentUser.name:true;});
+  return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+    <Sidebar cu={currentUser} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+    <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
+      <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",borderRadius:14,padding:"1.5rem 2rem",marginBottom:"1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <p style={{margin:"0 0 4px",fontSize:12,color:C.textSub}}>안녕하세요,</p>
+          <h2 style={{margin:0,fontSize:22,fontWeight:700,color:"#fff"}}>{currentUser?currentUser.name:""}님</h2>
+          <p style={{margin:0,fontSize:13,color:C.textSub}}>안전작업허가서 AI 자동 검토 시스템 v7</p>
+        </div>
+        <span style={{fontSize:52}}>🏭</span>
+      </div>
+      {/* API 키 설정 */}
+      <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",padding:"1rem 1.25rem",marginBottom:"1.25rem",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>🔑</span>
+        <div style={{flex:1}}>
+          <p style={{margin:"0 0 4px",fontSize:12,color:C.gray}}>Anthropic API 키</p>
+          <input type="password" value={apiKey} onChange={function(e){saveApiKey(e.target.value);}} placeholder="sk-ant-api03-..." style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1px solid #e5e7eb",fontSize:13,color:C.navy,outline:"none"}}/>
+        </div>
+        <div>
+          {apiKey
+            ? <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:C.greenBg,color:C.green,fontWeight:600}}>✅ 설정됨</span>
+            : <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:C.redBg,color:C.red,fontWeight:600}}>❌ 미설정</span>}
+        </div>
+      </div>
+      <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 2px 8px rgba(0,0,0,0.08)",overflow:"hidden"}}>
+        <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"12px 16px"}}>
+          <span style={{color:C.text,fontWeight:600,fontSize:14}}>🔍 허가서 유형 선택</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,padding:"1.25rem"}}>
+          {CATEGORIES.map(function(cat){
+            var cnt=myHist.filter(function(h){return h.category===cat.label;}).length;
+            return <button key={cat.id} onClick={function(){startReview(cat.id);}} style={{background:cat.bg,border:"1px solid "+cat.border,borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",display:"flex",flexDirection:"column",gap:6}}>
+              <span style={{fontSize:26}}>{cat.emoji}</span>
+              <p style={{margin:0,fontSize:13,fontWeight:600,color:cat.color,lineHeight:1.4}}>{cat.label}</p>
+              <p style={{margin:0,fontSize:11,color:cat.color,opacity:0.75}}>{cnt}건 검토</p>
+            </button>;
+          })}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function CriteriaTagView(props) {
+  var items=props.items, groups=[], gMap={};
+  items.forEach(function(i){var t=getTag(i.label);if(!gMap[t]){gMap[t]=[];groups.push({tag:t,items:gMap[t]});}gMap[t].push(i);});
+  return <div style={{padding:"10px 14px"}}>
+    {groups.map(function(g){
+      var tc=TAG_COLORS[g.tag]||DTC;
+      return <div key={g.tag} style={{marginBottom:8}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:4,background:tc.bg,border:"1px solid "+tc.border,borderRadius:"5px 5px 0 0",padding:"3px 10px"}}>
+          <span style={{fontSize:11,fontWeight:700,color:tc.color}}>■ {g.tag} ({g.items.length})</span>
+        </div>
+        <div style={{background:tc.bg,border:"1px solid "+tc.border,borderRadius:"0 5px 5px 5px",padding:"6px 8px",display:"flex",flexWrap:"wrap",gap:4}}>
+          {g.items.map(function(i){return <span key={i.id} style={{fontSize:11,padding:"3px 9px",background:"#fff",border:"1px solid "+tc.border,borderRadius:20,color:tc.color}}>{getText(i.label)}</span>;})}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+function LoadingScreen(props) {
+  return <div style={{display:"flex",height:"100vh",background:C.navy,alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <span style={{fontSize:48}}>{props.cat?props.cat.emoji:""}</span>
+    <div style={{width:44,height:44,borderRadius:"50%",border:"3px solid "+C.navyLt,borderTop:"3px solid "+C.accent,animation:"spin 0.9s linear infinite"}}/>
+    <p style={{color:C.text,fontSize:15,fontWeight:600,margin:0}}>{props.cat?props.cat.label:""} 검토 중...</p>
+    <p style={{color:C.textSub,fontSize:13,margin:0}}>{props.msg}</p>
+  </div>;
+}
+
+function Sidebar(props) {
+  var cu=props.cu,sel=props.sel,onSel=props.onSel,onAdmin=props.onAdmin,onLogout=props.onLogout,hist=props.hist,active=props.active;
+  var counts={};
+  CATEGORIES.forEach(function(c){counts[c.id]=hist.filter(function(h){return h.category===c.label&&(cu&&cu.role==="admin"||h.user===(cu?cu.name:""));}).length;});
+  return <div style={{width:220,background:C.navy,display:"flex",flexDirection:"column",minHeight:"100vh",flexShrink:0}}>
+    <div style={{padding:"1.25rem 1rem",borderBottom:"1px solid "+C.border}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+        <span style={{fontSize:22}}>🏭</span>
+        <span style={{color:C.text,fontWeight:700,fontSize:13,lineHeight:1.4}}>안전작업허가서 검토</span>
+      </div>
+      <span style={{fontSize:10,color:C.textSub,background:C.navyLt,padding:"2px 7px",borderRadius:10}}>AI 자동검토 v7</span>
+    </div>
+    <div style={{padding:"10px 12px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:8}}>
+      <div style={{width:30,height:30,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:700}}>{cu&&cu.name?cu.name[0]:"U"}</div>
+      <div><p style={{margin:0,fontSize:12,color:C.text,fontWeight:600}}>{cu?cu.name:""}</p>
+      <p style={{margin:0,fontSize:10,color:C.textSub}}>{cu&&cu.role==="admin"?"👑 관리자":"👤 일반"}</p></div>
+    </div>
+    <div style={{flex:1,padding:"8px 0",overflowY:"auto"}}>
+      <p style={{margin:"8px 12px 4px",fontSize:10,color:C.textSub,fontWeight:600}}>허가서 유형</p>
+      {CATEGORIES.map(function(cat){return <button key={cat.id} onClick={function(){onSel(cat.id);}} style={{width:"100%",padding:"8px 14px",background:sel===cat.id?C.accent+"22":"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderLeft:sel===cat.id?"3px solid "+C.accent:"3px solid transparent"}}>
+        <span style={{fontSize:16}}>{cat.emoji}</span>
+        <span style={{flex:1,fontSize:12,color:sel===cat.id?C.text:C.textSub,textAlign:"left"}}>{cat.label}</span>
+        {counts[cat.id]>0&&<span style={{fontSize:10,background:C.navyLt,color:C.textSub,padding:"1px 5px",borderRadius:8}}>{counts[cat.id]}</span>}
+      </button>;})}
+      {cu&&cu.role==="admin"&&<div>
+        <p style={{margin:"12px 12px 4px",fontSize:10,color:C.textSub,fontWeight:600}}>관리</p>
+        <button onClick={onAdmin} style={{width:"100%",padding:"8px 14px",background:active==="admin"?C.gold+"22":"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderLeft:active==="admin"?"3px solid "+C.gold:"3px solid transparent"}}>
+          <span>👥</span><span style={{fontSize:12,color:active==="admin"?C.gold:C.textSub}}>회원 관리</span>
+        </button>
+      </div>}
+    </div>
+    <div style={{padding:"10px 12px",borderTop:"1px solid "+C.border}}>
+      <button onClick={onLogout} style={{width:"100%",padding:"8px",background:"transparent",border:"1px solid "+C.border,borderRadius:7,cursor:"pointer",color:C.textSub,fontSize:12}}>🚪 로그아웃</button>
+    </div>
+  </div>;
+}
+
+function AuthScreen(props) {
+  var screen=props.screen,setScreen=props.setScreen,users=props.users,onLogin=props.onLogin,onRegister=props.onRegister,apiKey=props.apiKey,onSaveApiKey=props.onSaveApiKey;
+  var [id,setId]=React.useState(""), [name,setName]=React.useState(""), [pw,setPw]=React.useState(""), [pw2,setPw2]=React.useState(""), [err,setErr]=React.useState("");
+  var isLogin=screen==="login";
+  function login(){
+    var u=users.find(function(x){return x.id===id&&x.password===pw;});
+    if(!u){setErr("아이디 또는 비밀번호 오류");return;}
+    if(u.status==="blocked"){setErr("차단된 계정입니다");return;}
+    onLogin(u);
+  }
+  function register(){
+    if(!id||!name||!pw){setErr("모든 항목을 입력하세요");return;}
+    if(id.length<4){setErr("아이디는 4자 이상");return;}
+    if(pw.length<6){setErr("비밀번호는 6자 이상");return;}
+    if(pw!==pw2){setErr("비밀번호 불일치");return;}
+    if(users.find(function(u){return u.id===id;})){setErr("이미 사용 중인 아이디");return;}
+    onRegister(users.concat([{id:id,name:name,password:pw,role:"user",status:"active",createdAt:new Date().toISOString()}]));
+  }
+  return <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+    <div style={{width:"100%",maxWidth:420}}>
+      <div style={{textAlign:"center",marginBottom:"1.5rem"}}>
+        <div style={{fontSize:54,marginBottom:10}}>🏭</div>
+        <h1 style={{margin:0,fontSize:20,fontWeight:700,color:"#fff"}}>안전작업허가서 검토 시스템</h1>
+        <span style={{fontSize:11,color:C.textSub}}>AI 자동검토 v7</span>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.05)",borderRadius:14,border:"1px solid "+C.border,overflow:"hidden",marginBottom:12}}>
+        <div style={{display:"flex",borderBottom:"1px solid "+C.border}}>
+          {[["login","로그인"],["register","회원가입"]].map(function(arr){return <button key={arr[0]} onClick={function(){setScreen(arr[0]);setErr("");}} style={{flex:1,padding:"12px",background:screen===arr[0]?C.accent+"33":"transparent",border:"none",cursor:"pointer",color:screen===arr[0]?"#fff":C.textSub,fontSize:13,fontWeight:screen===arr[0]?700:400,borderBottom:screen===arr[0]?"2px solid "+C.accent:"2px solid transparent"}}>{arr[1]}</button>;})}
+        </div>
+        <div style={{padding:"1.25rem"}}>
+          {err&&<div style={{background:"rgba(220,38,38,0.15)",color:"#fca5a5",border:"1px solid rgba(220,38,38,0.3)",borderRadius:7,padding:"8px 12px",marginBottom:"1rem",fontSize:12}}>⚠️ {err}</div>}
+          {(isLogin?[["아이디",id,setId,"text"],["비밀번호",pw,setPw,"password"]]:[["아이디(4자↑)",id,setId,"text"],["이름",name,setName,"text"],["비밀번호(6자↑)",pw,setPw,"password"],["비밀번호확인",pw2,setPw2,"password"]]).map(function(arr){return <div key={arr[0]} style={{marginBottom:10}}>
+            <label style={{fontSize:12,color:C.textSub,display:"block",marginBottom:4}}>{arr[0]}</label>
+            <input type={arr[3]} value={arr[1]} onChange={function(e){arr[2](e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&isLogin)login();}} placeholder={arr[0]+" 입력"} style={{width:"100%",padding:"9px 11px",borderRadius:8,border:"1px solid "+C.border,background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:13,outline:"none"}}/>
+          </div>;})}
+          <button onClick={isLogin?login:register} style={{width:"100%",padding:11,borderRadius:9,border:"none",background:C.accent,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{isLogin?"로그인":"가입하기"}</button>
+        </div>
+      </div>
+      {/* API 키 입력 */}
+      <div style={{background:"rgba(255,255,255,0.05)",borderRadius:10,border:"1px solid "+C.border,padding:"1rem"}}>
+        <p style={{margin:"0 0 6px",fontSize:12,color:C.textSub}}>🔑 Anthropic API 키 설정</p>
+        <input type="password" value={apiKey} onChange={function(e){onSaveApiKey(e.target.value);}} placeholder="sk-ant-api03-..." style={{width:"100%",padding:"9px 11px",borderRadius:8,border:"1px solid "+C.border,background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:12,outline:"none",marginBottom:6}}/>
+        <p style={{margin:0,fontSize:10,color:C.textSub}}>※ API 키는 이 브라우저에만 저장됩니다 · <a href="https://console.anthropic.com" target="_blank" style={{color:C.accent}}>발급받기</a></p>
+      </div>
+    </div>
+  </div>;
+}
+
+function AdminContent(props) {
+  var users=props.users,history=props.history,onSave=props.onSave,onBack=props.onBack;
+  var [tab,setTab]=React.useState("users");
+  return <div style={{flex:1,padding:"2rem",overflowY:"auto"}}>
+    <div style={{maxWidth:700}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:"1.5rem"}}>
+        <button onClick={onBack} style={{background:C.navyMid,border:"none",color:C.textSub,cursor:"pointer",padding:"6px 12px",borderRadius:6,fontSize:13}}>← 메인</button>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>👥 관리자 패널</h2>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
+        {[["users","👤 회원 관리"],["history","📋 검토 이력"]].map(function(arr){return <button key={arr[0]} onClick={function(){setTab(arr[0]);}} style={{padding:"7px 16px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,border:"1px solid "+(tab===arr[0]?C.accent:"#e5e7eb"),background:tab===arr[0]?C.accent:"#fff",color:tab===arr[0]?"#fff":C.gray}}>{arr[1]}</button>;})}
+      </div>
+      {tab==="users"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
+        <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>회원 목록 ({users.length}명)</span></div>
+        {users.map(function(u,i,arr){return <div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:i<arr.length-1?"1px solid #f3f4f6":"none"}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:u.role==="admin"?C.gold+"33":C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:u.role==="admin"?C.amber:C.gray}}>{u.name?u.name[0]:""}</div>
+          <div style={{flex:1}}><p style={{margin:0,fontSize:13,fontWeight:600,color:C.navy}}>{u.name} <span style={{fontSize:11,color:C.gray}}>({u.id})</span></p></div>
+          <select value={u.role} onChange={function(e){if(u.id==="admin")return;onSave(users.map(function(x){return x.id===u.id?Object.assign({},x,{role:e.target.value}):x;}));}} disabled={u.id==="admin"} style={{fontSize:11,padding:"2px 5px",border:"1px solid #e5e7eb",borderRadius:5}}>
+            <option value="admin">👑 관리자</option><option value="user">👤 일반</option>
+          </select>
+          <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:600,background:u.status==="blocked"?C.redBg:C.greenBg,color:u.status==="blocked"?C.red:C.green}}>{u.status==="blocked"?"차단":"활성"}</span>
+          {u.id!=="admin"&&<div style={{display:"flex",gap:2}}>
+            <button onClick={function(){onSave(users.map(function(x){return x.id===u.id?Object.assign({},x,{status:x.status==="blocked"?"active":"blocked"}):x;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}}>{u.status==="blocked"?"🔓":"🔒"}</button>
+            <button onClick={function(){onSave(users.filter(function(x){return x.id!==u.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
+          </div>}
+        </div>;})}
+      </div>}
+      {tab==="history"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
+        <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>전체 검토 이력 ({history.length}건)</span></div>
+        {history.length===0&&<p style={{padding:"2rem",textAlign:"center",fontSize:13,color:C.gray}}>검토 이력이 없습니다.</p>}
+        {history.slice(0,50).map(function(h,i,arr){
+          var pass=Object.values(h.results).filter(function(v){return v==="pass";}).length;
+          var fail=Object.values(h.results).filter(function(v){return v==="fail";}).length;
+          var cat=CATEGORIES.find(function(c){return c.label===h.category;});
+          return <div key={h.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:i<arr.length-1?"1px solid #f3f4f6":"none"}}>
+            <span style={{fontSize:18}}>{cat?cat.emoji:"📄"}</span>
+            <div style={{flex:1}}><p style={{margin:0,fontSize:13,fontWeight:600,color:C.navy}}>{h.category}</p>
+            <p style={{margin:0,fontSize:11,color:C.gray}}>{h.user} · {h.date}</p></div>
+            <span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.greenBg,color:C.green,fontWeight:600}}>✅ {pass}</span>
+            {fail>0&&<span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.redBg,color:C.red,fontWeight:600}}>❌ {fail}</span>}
+          </div>;
+        })}
+      </div>}
+    </div>
+  </div>;
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById("root"));
+</script>
+</body>
+</html>
