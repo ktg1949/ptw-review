@@ -329,7 +329,12 @@ function App() {
         if(att===1) await new Promise(function(r){setTimeout(r,300);});
         resp = await fetch("https://api.anthropic.com/v1/messages", {
           method:"POST",
-          headers:{"Content-Type":"application/json", "x-api-key":apiKey, "anthropic-version":"2023-06-01"},
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":apiKey,
+            "anthropic-version":"2023-06-01",
+            "anthropic-dangerous-direct-browser-access":"true"
+          },
           body:JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:3000, messages:[{role:"user", content:parts}]})
         });
         if (resp.status===429||resp.status===529||resp.status===503) {
