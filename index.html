@@ -245,6 +245,29 @@ const CRITERIA = {
   ],
 };
 
+// 전체 카테고리 검토항목을 하나의 고정 텍스트로 결합 (프롬프트 캐싱용 - 최소 토큰 기준 충족 목적)
+function buildAllCriteriaText() {
+  var lines = [
+    "당신은 산업안전 문서(안전작업허가서) 검토 전문가입니다.",
+    "아래는 허가서 유형별 전체 검토항목 목록입니다. 실제 분석 시에는 이 중 지시받은 유형의 항목만 사용하세요.",
+    "",
+    "판정 기준:",
+    "- pass: 해당 내용이 문서에 명확히 기재·서명·체크되어 있음",
+    "- fail: 필수 항목이 누락되었거나 불완전하게 작성됨",
+    "- na: 해당 문서 종류/상황에 적용되지 않는 항목",
+    ""
+  ];
+  CATEGORIES.forEach(function(cat) {
+    lines.push("=== " + cat.label + " ===");
+    (CRITERIA[cat.id] || []).forEach(function(item, idx) {
+      lines.push((idx + 1) + ". " + getText(item.label) + " [" + item.id + "]");
+    });
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+const ALL_CRITERIA_TEXT = buildAllCriteriaText();
+
 function toBase64(file) {
   return new Promise(function(res,rej) {
     if(file.type==="application/pdf") {
@@ -311,7 +334,16 @@ function App() {
     var iv = setInterval(function(){ mi=(mi+1)%msgs.length; setLoadMsg(msgs[mi]); }, 1800);
     try {
       var limitedFiles = files.slice(0,3);
-      var parts = [];
+      var cat = CATEGORIES.find(function(c){return c.id===selCat;});
+
+      // 1) 고정 블록: 전체 카테고리 검토항목 (캐싱 대상, 4096토큰 기준 충족)
+      var parts = [{
+        type:"text",
+        text: ALL_CRITERIA_TEXT,
+        cache_control:{type:"ephemeral", ttl:"1h"}
+      }];
+
+      // 2) 동적 블록: 첨부 파일
       for (var i=0; i<limitedFiles.length; i++) {
         var f = limitedFiles[i];
         var b64 = await toBase64(f);
@@ -319,9 +351,9 @@ function App() {
           ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}}
           : {type:"image",    source:{type:"base64", media_type:"image/jpeg", data:b64}});
       }
-      var cat = CATEGORIES.find(function(c){return c.id===selCat;});
-      var crit = (CRITERIA[selCat]||[]).map(function(i,idx){return (idx+1)+". "+getText(i.label)+" ["+i.id+"]";}).join("\n");
-      parts.push({type:"text", text:"산업안전 문서 검토 전문가로서 ["+cat.label+"] 문서를 분석하세요.\nstatus: pass=기재완료, fail=누락/불완전, na=해당없음\n\n검토항목:\n"+crit+"\n\nJSON만 출력:\n{\"results\":{\"id\":{\"status\":\"pass|fail|na\",\"note\":\"10자이내\"}},\"summary\":\"50자이내\"}"});
+
+      // 3) 동적 블록: 이번 요청에서 실제로 채점할 카테고리 지정
+      parts.push({type:"text", text:"위 전체 목록 중 [\""+cat.label+"\"] 섹션에 해당하는 항목만 사용하여 첨부된 문서를 분석하세요.\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"항목id\":{\"status\":\"pass|fail|na\",\"note\":\"10자이내\"}},\"summary\":\"50자이내\"}"});
 
       var resp, att = 0;
       while (att < 5) {
@@ -347,6 +379,10 @@ function App() {
       }
       if (!resp.ok) throw new Error("API "+resp.status);
       var data = await resp.json();
+      // 캐싱 적중 여부 확인용 (브라우저 콘솔, F12 → Console 에서 확인 가능)
+      if (data.usage) {
+        console.log("[캐싱 확인] cache_creation:", data.usage.cache_creation_input_tokens, "/ cache_read:", data.usage.cache_read_input_tokens, "/ input:", data.usage.input_tokens);
+      }
       var raw = (data.content||[]).map(function(c){return c.text||"";}).join("");
       var clean = raw.replace(/```json|```/g,"").trim();
       if(!clean.endsWith("}")) {
