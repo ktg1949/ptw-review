@@ -386,14 +386,14 @@ function App() {
   }
   if (screen==="admin") {
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin"/>
+      <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin"/>
       <AdminContent users={users} history={history} onSave={saveUsers} onBack={function(){setScreen("main");}}/>
     </div>;
   }
   if (screen==="error") {
     var ecat=CATEGORIES.find(function(c){return c.id===selCat;});
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{maxWidth:480,width:"100%",padding:"2rem",textAlign:"center"}}>
           <div style={{fontSize:56,marginBottom:"1rem"}}>⚠️</div>
@@ -412,7 +412,7 @@ function App() {
   if (screen==="review") {
     var rcat=CATEGORIES.find(function(c){return c.id===selCat;});
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
       <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
         <div style={{maxWidth:720}}>
           <button onClick={function(){setScreen("main");}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13,marginBottom:"1rem"}}>← 메인으로</button>
@@ -461,7 +461,7 @@ function App() {
     ritems.forEach(function(i){var t=getTag(i.label);if(!rgMap[t]){rgMap[t]=[];rgroups.push({tag:t,items:rgMap[t]});}rgMap[t].push(i);});
     var curGroup=rgroups.find(function(g){return g.tag===activeGroup;})||rgroups[0];
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
       <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
         <div style={{maxWidth:720}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
@@ -521,7 +521,7 @@ function App() {
   // MAIN
   var myHist=history.filter(function(h){return currentUser&&currentUser.role!=="admin"?h.user===currentUser.name:true;});
   return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-    <Sidebar cu={currentUser} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+    <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
     <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
       <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",borderRadius:14,padding:"1.5rem 2rem",marginBottom:"1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
@@ -592,7 +592,8 @@ function LoadingScreen(props) {
 }
 
 function Sidebar(props) {
-  var cu=props.cu,sel=props.sel,onSel=props.onSel,onAdmin=props.onAdmin,onLogout=props.onLogout,hist=props.hist,active=props.active;
+  var cu=props.cu,sel=props.sel,onSel=props.onSel,onAdmin=props.onAdmin,onLogout=props.onLogout,hist=props.hist,active=props.active,users=props.users||[];
+  var pendingCount = users.filter(function(u){return u.status==="pending";}).length;
   var counts={};
   CATEGORIES.forEach(function(c){counts[c.id]=hist.filter(function(h){return h.category===c.label&&(cu&&cu.role==="admin"||h.user===(cu?cu.name:""));}).length;});
   return <div style={{width:220,background:C.navy,display:"flex",flexDirection:"column",minHeight:"100vh",flexShrink:0}}>
@@ -618,7 +619,8 @@ function Sidebar(props) {
       {cu&&cu.role==="admin"&&<div>
         <p style={{margin:"12px 12px 4px",fontSize:10,color:C.textSub,fontWeight:600}}>관리</p>
         <button onClick={onAdmin} style={{width:"100%",padding:"8px 14px",background:active==="admin"?C.gold+"22":"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderLeft:active==="admin"?"3px solid "+C.gold:"3px solid transparent"}}>
-          <span>👥</span><span style={{fontSize:12,color:active==="admin"?C.gold:C.textSub}}>회원 관리</span>
+          <span>👥</span><span style={{fontSize:12,color:active==="admin"?C.gold:C.textSub,flex:1,textAlign:"left"}}>회원 관리</span>
+          {pendingCount>0&&<span style={{fontSize:10,background:C.amber,color:"#fff",padding:"1px 6px",borderRadius:10,fontWeight:700}}>{pendingCount}</span>}
         </button>
       </div>}
     </div>
@@ -636,6 +638,7 @@ function AuthScreen(props) {
     var u=users.find(function(x){return x.id===id&&x.password===pw;});
     if(!u){setErr("아이디 또는 비밀번호 오류");return;}
     if(u.status==="blocked"){setErr("차단된 계정입니다");return;}
+    if(u.status==="pending"){setErr("관리자 승인 대기중입니다. 승인 후 로그인해 주세요.");return;}
     onLogin(u);
   }
   function register(){
@@ -644,7 +647,8 @@ function AuthScreen(props) {
     if(pw.length<6){setErr("비밀번호는 6자 이상");return;}
     if(pw!==pw2){setErr("비밀번호 불일치");return;}
     if(users.find(function(u){return u.id===id;})){setErr("이미 사용 중인 아이디");return;}
-    onRegister(users.concat([{id:id,name:name,password:pw,role:"user",status:"active",createdAt:new Date().toISOString()}]));
+    onRegister(users.concat([{id:id,name:name,password:pw,role:"user",status:"pending",createdAt:new Date().toISOString()}]));
+    alert("회원가입이 완료되었습니다. 관리자 승인 후 로그인하실 수 있습니다.");
   }
   return <div style={{minHeight:"100vh",background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
     <div style={{width:"100%",maxWidth:420}}>
@@ -686,7 +690,7 @@ function AdminContent(props) {
         <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>👥 관리자 패널</h2>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
-        {[["users","👤 회원 관리"],["history","📋 검토 이력"]].map(function(arr){return <button key={arr[0]} onClick={function(){setTab(arr[0]);}} style={{padding:"7px 16px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,border:"1px solid "+(tab===arr[0]?C.accent:"#e5e7eb"),background:tab===arr[0]?C.accent:"#fff",color:tab===arr[0]?"#fff":C.gray}}>{arr[1]}</button>;})}
+        {[["users","👤 회원 관리"+(users.filter(function(u){return u.status==="pending";}).length>0?" ("+users.filter(function(u){return u.status==="pending";}).length+")":"")],["history","📋 검토 이력"]].map(function(arr){return <button key={arr[0]} onClick={function(){setTab(arr[0]);}} style={{padding:"7px 16px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,border:"1px solid "+(tab===arr[0]?C.accent:"#e5e7eb"),background:tab===arr[0]?C.accent:"#fff",color:tab===arr[0]?"#fff":C.gray}}>{arr[1]}</button>;})}
       </div>
       {tab==="users"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
         <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>회원 목록 ({users.length}명)</span></div>
@@ -696,8 +700,12 @@ function AdminContent(props) {
           <select value={u.role} onChange={function(e){if(u.id==="admin")return;onSave(users.map(function(x){return x.id===u.id?Object.assign({},x,{role:e.target.value}):x;}));}} disabled={u.id==="admin"} style={{fontSize:11,padding:"2px 5px",border:"1px solid #e5e7eb",borderRadius:5}}>
             <option value="admin">👑 관리자</option><option value="user">👤 일반</option>
           </select>
-          <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:600,background:u.status==="blocked"?C.redBg:C.greenBg,color:u.status==="blocked"?C.red:C.green}}>{u.status==="blocked"?"차단":"활성"}</span>
-          {u.id!=="admin"&&<div style={{display:"flex",gap:2}}>
+          <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:600,background:u.status==="pending"?C.amberBg:u.status==="blocked"?C.redBg:C.greenBg,color:u.status==="pending"?C.amber:u.status==="blocked"?C.red:C.green}}>{u.status==="pending"?"승인대기":u.status==="blocked"?"차단":"활성"}</span>
+          {u.id!=="admin"&&u.status==="pending"&&<div style={{display:"flex",gap:4}}>
+            <button onClick={function(){onSave(users.map(function(x){return x.id===u.id?Object.assign({},x,{status:"active"}):x;}));}} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.green,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>✅ 승인</button>
+            <button onClick={function(){if(confirm(u.name+"님의 가입 신청을 거절(삭제)하시겠습니까?"))onSave(users.filter(function(x){return x.id!==u.id;}));}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+C.redBorder,background:"#fff",color:C.red,fontSize:11,fontWeight:600,cursor:"pointer"}}>❌ 거절</button>
+          </div>}
+          {u.id!=="admin"&&u.status!=="pending"&&<div style={{display:"flex",gap:2}}>
             <button onClick={function(){onSave(users.map(function(x){return x.id===u.id?Object.assign({},x,{status:x.status==="blocked"?"active":"blocked"}):x;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}}>{u.status==="blocked"?"🔓":"🔒"}</button>
             <button onClick={function(){onSave(users.filter(function(x){return x.id!==u.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
           </div>}
