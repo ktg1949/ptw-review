@@ -81,7 +81,7 @@ const CRITERIA = {
     {id:"psm_p1",label:"[①안전작업허가서] 결재 서명(팀장·담당 등) 기재 여부"},
     {id:"psm_p2",label:"[①안전작업허가서] 일반작업 허가 공통사항 체크 완료"},
     {id:"psm_p3",label:"[①안전작업허가서] 첨부서류 확인 표시 여부"},
-    {id:"psm_p4",label:"[①안전작업허가서] 작업 완료 후 서명 기재"},
+    {id:"psm_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"psm_p5",label:"[①안전작업허가서] 필수 빈칸(허가기간·작업인원·PTW No.) 없음"},
     {id:"psm_j1",label:"[②위험성평가] PTW No·작업일·작업내용·작성자 기재 여부"},
     {id:"psm_j2",label:"[②위험성평가] 안전보호구 및 안전장구 체크 완료"},
@@ -107,7 +107,7 @@ const CRITERIA = {
     {id:"haz_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"haz_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"haz_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"haz_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"haz_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"haz_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
     {id:"haz_j1",label:"[②위험성평가] 작성자 정보 기재 여부"},
     {id:"haz_j2",label:"[②위험성평가] 보호구 체크 완료"},
@@ -131,7 +131,7 @@ const CRITERIA = {
     {id:"hot_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"hot_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"hot_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"hot_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hot_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"hot_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
     {id:"hot_j1",label:"[②위험성평가] 작성자 정보 기재"},
     {id:"hot_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
@@ -155,7 +155,7 @@ const CRITERIA = {
     {id:"hvy_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"hvy_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"hvy_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"hvy_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hvy_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"hvy_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
     {id:"hvy_j1",label:"[②위험성평가] 작성자 정보 기재"},
     {id:"hvy_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
@@ -178,7 +178,7 @@ const CRITERIA = {
     {id:"hgt_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"hgt_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"hgt_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"hgt_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"hgt_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"hgt_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
     {id:"hgt_j1",label:"[②위험성평가] 작성자 정보 기재"},
     {id:"hgt_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
@@ -199,7 +199,7 @@ const CRITERIA = {
     {id:"cnf_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"cnf_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"cnf_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"cnf_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"cnf_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"cnf_j1",label:"[②위험성평가] 작성자 정보 기재"},
     {id:"cnf_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
     {id:"cnf_j3",label:"[②위험성평가] 유해위험요인·안전대책 작성"},
@@ -224,7 +224,7 @@ const CRITERIA = {
     {id:"elc_p1",label:"[①안전작업허가서] 결재 서명 기재 여부"},
     {id:"elc_p2",label:"[①안전작업허가서] 공통사항 체크 완료"},
     {id:"elc_p3",label:"[①안전작업허가서] 첨부서류 확인 표시"},
-    {id:"elc_p4",label:"[①안전작업허가서] 작업완료 서명 기재"},
+    {id:"elc_p4",label:"[①안전작업허가서] 작업완료확인 시 운전원 서명 누락 확인"},
     {id:"elc_p5",label:"[①안전작업허가서] 필수 빈칸 없음"},
     {id:"elc_j1",label:"[②위험성평가] 작성자 정보 기재"},
     {id:"elc_j2",label:"[②위험성평가] 작업단계 5단계 이상 작성"},
@@ -254,12 +254,12 @@ function toBase64(file) {
     }
     var img=new Image(), url=URL.createObjectURL(file);
     img.onload=function() {
-      var MAX=800,w=img.width,h=img.height;
+      var MAX=1600,w=img.width,h=img.height;
       if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
       var cv=document.createElement("canvas"); cv.width=w; cv.height=h;
       cv.getContext("2d").drawImage(img,0,0,w,h);
       URL.revokeObjectURL(url);
-      res(cv.toDataURL("image/jpeg",0.6).split(",")[1]);
+      res(cv.toDataURL("image/jpeg",0.85).split(",")[1]);
     };
     img.onerror=rej; img.src=url;
   });
@@ -321,7 +321,7 @@ function App() {
       }
       var cat = CATEGORIES.find(function(c){return c.id===selCat;});
       var crit = (CRITERIA[selCat]||[]).map(function(i,idx){return (idx+1)+". "+getText(i.label)+" ["+i.id+"]";}).join("\n");
-      parts.push({type:"text", text:"산업안전 문서 검토 전문가로서 ["+cat.label+"] 문서를 분석하세요.\nstatus: pass=기재완료, fail=누락/불완전, na=해당없음\n\n검토항목:\n"+crit+"\n\nJSON만 출력:\n{\"results\":{\"id\":{\"status\":\"pass|fail|na\",\"note\":\"10자이내\"}},\"summary\":\"50자이내\"}"});
+      parts.push({type:"text", text:"당신은 매우 꼼꼼하고 엄격한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 pass로 판정하지 마세요.\n- 특히 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요. 일부 칸에만 서명이 있고 나머지가 비어있다면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하고, 하나라도 비어있으면 fail로 판정하세요.\n- 이미지가 흐릿하거나 작아서 특정 칸의 서명·체크 여부를 확신할 수 없다면, 임의로 pass 처리하지 말고 note에 '확인불가' 등으로 표시하고 status는 fail로 판정하세요 (안전 문서는 불확실한 경우 보수적으로 판정).\n\nstatus: pass=관련 칸/란 모두 기재완료, fail=하나라도 누락/불완전/확인불가, na=해당없음\n\n검토항목:\n"+crit+"\n\nJSON만 출력:\n{\"results\":{\"id\":{\"status\":\"pass|fail|na\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\"}"});
 
       var resp, att = 0;
       while (att < 5) {
