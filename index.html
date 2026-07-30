@@ -62,7 +62,7 @@ const SC = {
   pass:   {bg:C.greenBg, text:C.green, border:C.greenBorder, label:"적합"},
   fail:   {bg:C.redBg,   text:C.red,   border:C.redBorder,   label:"누락/미비"},
   na:     {bg:C.grayBg,  text:C.gray,  border:C.grayBorder,  label:"해당없음"},
-  unknown:{bg:C.amberBg, text:C.amber, border:C.amberBorder, label:"미검토"},
+  unknown:{bg:C.amberBg, text:C.amber, border:C.amberBorder, label:"검토필요"},
 };
 
 function getTag(label){var m=label.match(/^\[(.+?)\]/);return m?m[1]:"기타";}
@@ -479,7 +479,7 @@ function App() {
             <span>💡</span><p style={{margin:0,fontSize:13,color:C.text,lineHeight:1.7}}>{reviewSummary}</p>
           </div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:"1rem"}}>
-            {[["pass","적합",counts.pass],["fail","누락/미비",counts.fail],["na","해당없음",counts.na],["unknown","미검토",counts.unknown]].map(function(arr){
+            {[["pass","적합",counts.pass],["fail","누락/미비",counts.fail],["na","해당없음",counts.na],["unknown","검토필요",counts.unknown]].map(function(arr){
               return <div key={arr[0]} style={{background:SC[arr[0]].bg,border:"1px solid "+SC[arr[0]].border,borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
                 <div style={{fontSize:24,fontWeight:700,color:SC[arr[0]].text}}>{arr[2]}</div>
                 <div style={{fontSize:11,color:SC[arr[0]].text,marginTop:2}}>{arr[1]}</div>
