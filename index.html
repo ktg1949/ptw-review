@@ -7,6 +7,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;}
@@ -68,8 +70,19 @@ const SC = {
 function getTag(label){var m=label.match(/^\[(.+?)\]/);return m?m[1]:"기타";}
 function getText(label){return label.replace(/^\[.+?\]\s*/,"");}
 
-// 스토리지 (localStorage 사용)
-const UK="ptw_v7_users", HK="ptw_v7_history";
+// Firebase 초기화 (회원정보/검토이력은 Firestore로 여러 PC/사용자 간 공유)
+const firebaseConfig = {
+  apiKey: "AIzaSyCqcshNz5fHq87YccUlZG6RwN41_fJ57fs",
+  authDomain: "ptw-review.firebaseapp.com",
+  projectId: "ptw-review",
+  storageBucket: "ptw-review.firebasestorage.app",
+  messagingSenderId: "749978006715",
+  appId: "1:749978006715:web:dae3e20caf8c5aa1e6e59e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// API 키만 브라우저별 개인 저장(계정 공용 데이터 아님)
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
@@ -283,17 +296,49 @@ function App() {
   const fileRef = React.useRef();
 
   React.useEffect(function() {
-    var u = lsGet(UK) || [];
-    if (!u.find(function(x){return x.id==="admin";})) {
-      u = [INIT_ADMIN].concat(u);
-      lsSet(UK, u);
-    }
-    setUsers(u);
-    setHistory(lsGet(HK) || []);
+    // 관리자 계정이 없으면 최초 1회 생성
+    db.collection("users").doc("admin").get().then(function(snap){
+      if(!snap.exists) db.collection("users").doc("admin").set(INIT_ADMIN);
+    });
+    // 회원 목록 실시간 동기화 (여러 PC 간 공유)
+    var unsubUsers = db.collection("users").onSnapshot(function(qs){
+      var list = []; qs.forEach(function(d){ list.push(d.data()); });
+      setUsers(list);
+    }, function(err){ console.error("users sync error:", err); });
+    // 검토 이력 실시간 동기화
+    var unsubHist = db.collection("history").orderBy("id","desc").limit(200).onSnapshot(function(qs){
+      var list = []; qs.forEach(function(d){ list.push(d.data()); });
+      setHistory(list);
+    }, function(err){ console.error("history sync error:", err); });
+    return function(){ unsubUsers(); unsubHist(); };
   }, []);
 
-  function saveUsers(u) { setUsers(u); lsSet(UK, u); }
-  function saveHistory(h) { setHistory(h); lsSet(HK, h); }
+  // 배열 전체를 넘기던 기존 호출부와 호환되도록, 이전 상태와 비교해 변경분만 Firestore에 반영
+  function saveUsers(newUsers) {
+    var oldMap = {}; users.forEach(function(u){ oldMap[u.id]=u; });
+    var newIds = {}; newUsers.forEach(function(u){ newIds[u.id]=true; });
+    Object.keys(oldMap).forEach(function(id){
+      if(!newIds[id]) db.collection("users").doc(id).delete().catch(function(e){console.error(e);});
+    });
+    newUsers.forEach(function(u){
+      var old = oldMap[u.id];
+      if(!old || JSON.stringify(old)!==JSON.stringify(u)) {
+        db.collection("users").doc(u.id).set(u).catch(function(e){console.error(e);});
+      }
+    });
+    setUsers(newUsers);
+  }
+  function saveHistory(newHist) {
+    var oldMap = {}; history.forEach(function(h){ oldMap[h.id]=h; });
+    var newIds = {}; newHist.forEach(function(h){ newIds[h.id]=true; });
+    Object.keys(oldMap).forEach(function(id){
+      if(!newIds[id]) db.collection("history").doc(String(id)).delete().catch(function(e){console.error(e);});
+    });
+    newHist.forEach(function(h){
+      if(!oldMap[h.id]) db.collection("history").doc(String(h.id)).set(h).catch(function(e){console.error(e);});
+    });
+    setHistory(newHist);
+  }
   function saveApiKey(k) { setApiKey(k); localStorage.setItem("ptw_apikey", k); }
 
   function startReview(catId) {
