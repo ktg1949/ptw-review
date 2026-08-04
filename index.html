@@ -310,7 +310,14 @@ function App() {
       var list = []; qs.forEach(function(d){ list.push(d.data()); });
       setHistory(list);
     }, function(err){ console.error("history sync error:", err); });
-    return function(){ unsubUsers(); unsubHist(); };
+    // 공용 API 키 실시간 동기화 (한 명이 입력하면 전원 공유)
+    var unsubKey = db.collection("config").doc("settings").onSnapshot(function(snap){
+      if(snap.exists && snap.data().apiKey){
+        setApiKey(snap.data().apiKey);
+        localStorage.setItem("ptw_apikey", snap.data().apiKey);
+      }
+    }, function(err){ console.error("apikey sync error:", err); });
+    return function(){ unsubUsers(); unsubHist(); unsubKey(); };
   }, []);
 
   // 배열 전체를 넘기던 기존 호출부와 호환되도록, 이전 상태와 비교해 변경분만 Firestore에 반영
@@ -339,7 +346,11 @@ function App() {
     });
     setHistory(newHist);
   }
-  function saveApiKey(k) { setApiKey(k); localStorage.setItem("ptw_apikey", k); }
+  function saveApiKey(k) {
+    setApiKey(k);
+    localStorage.setItem("ptw_apikey", k);
+    db.collection("config").doc("settings").set({apiKey:k}, {merge:true}).catch(function(e){console.error(e);});
+  }
 
   function startReview(catId) {
     if (!apiKey) { alert("API 키를 먼저 설정해 주세요."); return; }
