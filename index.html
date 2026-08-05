@@ -378,7 +378,7 @@ function App() {
       }
       var cat = CATEGORIES.find(function(c){return c.id===selCat;});
       var crit = (CRITERIA[selCat]||[]).map(function(i,idx){return (idx+1)+". "+getText(i.label)+" ["+i.id+"]";}).join("\n");
-      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요. 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축, 손글씨 필체 등의 이유로 특정 칸에 내용이 있는지 없는지 확신하기 어렵다면, 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요 (안 보이면 빈 문자열로):\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 뒤에 기재된 값 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 기재된 성명. 다른 열의 팀장과 혼동하지 말 것.\n- workName: 작업명\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"}}"});
+      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요. 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축, 손글씨 필체 등의 이유로 특정 칸에 내용이 있는지 없는지 확신하기 어렵다면, 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요. **매우 중요: 이 정보들은 반드시 문서에 실제로 적혀 있는 글자를 옮겨적으세요. 절대 다른 칸의 값을 가져오거나, 문서에 없는 이름/부서명을 지어내지 마세요. 다만 글씨가 다소 흐릿하거나 필기체라도, 그 칸 자체에 뭔가 적혀 있다면 최대한 판독해서 가장 근접하게 읽은 값을 기입하세요(빈칸으로 남기지 말 것). 정말로 그 칸 자체가 비어있어서 아무것도 적혀 있지 않은 경우에만 빈 문자열(\"\")로 남겨두세요.**\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 바로 뒤에 기재된 값 그대로 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 실제로 적힌 성명 그대로. 다른 열의 팀장이나 다른 인물과 혼동하지 말 것.\n- workName: 작업명\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"}}"});
 
       var resp, att = 0;
       while (att < 5) {
@@ -454,7 +454,7 @@ function App() {
   if (screen==="admin") {
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
       <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin"/>
-      <AdminContent users={users} history={history} onSave={saveUsers} onBack={function(){setScreen("main");}}/>
+      <AdminContent users={users} history={history} onSave={saveUsers} onSaveHistory={saveHistory} onBack={function(){setScreen("main");}}/>
     </div>;
   }
   if (screen==="error") {
@@ -748,7 +748,7 @@ function AuthScreen(props) {
 }
 
 function AdminContent(props) {
-  var users=props.users,history=props.history,onSave=props.onSave,onBack=props.onBack;
+  var users=props.users,history=props.history,onSave=props.onSave,onSaveHistory=props.onSaveHistory,onBack=props.onBack;
   var [tab,setTab]=React.useState("users");
 
   function exportHistoryToExcel() {
@@ -802,7 +802,10 @@ function AdminContent(props) {
       {tab==="history"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
         <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{color:C.text,fontWeight:600,fontSize:13}}>전체 검토 이력 ({history.length}건)</span>
-          {history.length>0&&<button onClick={exportHistoryToExcel} style={{padding:"5px 12px",borderRadius:6,border:"none",background:C.gold,color:"#1a1a1a",fontSize:11,fontWeight:700,cursor:"pointer"}}>📥 엑셀 다운로드</button>}
+          <div style={{display:"flex",gap:6}}>
+            {history.length>0&&<button onClick={exportHistoryToExcel} style={{padding:"5px 12px",borderRadius:6,border:"none",background:C.gold,color:"#1a1a1a",fontSize:11,fontWeight:700,cursor:"pointer"}}>📥 엑셀 다운로드</button>}
+            {history.length>0&&<button onClick={function(){if(confirm("전체 검토 이력 "+history.length+"건을 모두 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."))onSaveHistory([]);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.redBorder,background:"#fff",color:C.red,fontSize:11,fontWeight:700,cursor:"pointer"}}>🗑️ 전체 삭제</button>}
+          </div>
         </div>
         {history.length===0&&<p style={{padding:"2rem",textAlign:"center",fontSize:13,color:C.gray}}>검토 이력이 없습니다.</p>}
         {history.slice(0,50).map(function(h,i,arr){
@@ -815,6 +818,7 @@ function AdminContent(props) {
             <p style={{margin:0,fontSize:11,color:C.gray}}>{h.user} · {h.date}{h.dept?" · "+h.dept:""}</p></div>
             <span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.greenBg,color:C.green,fontWeight:600}}>✅ {pass}</span>
             {fail>0&&<span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.redBg,color:C.red,fontWeight:600}}>❌ {fail}</span>}
+            <button onClick={function(){if(confirm("이 검토 이력을 삭제하시겠습니까?"))onSaveHistory(history.filter(function(x){return x.id!==h.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="삭제">🗑️</button>
           </div>;
         })}
       </div>}
