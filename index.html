@@ -307,7 +307,7 @@ function App() {
       setUsers(list);
     }, function(err){ console.error("users sync error:", err); });
     // 검토 이력 실시간 동기화
-    var unsubHist = db.collection("history").orderBy("id","desc").limit(200).onSnapshot(function(qs){
+    var unsubHist = db.collection("history").orderBy("id","desc").onSnapshot(function(qs){
       var list = []; qs.forEach(function(d){ list.push(d.data()); });
       setHistory(list);
     }, function(err){ console.error("history sync error:", err); });
@@ -433,7 +433,7 @@ function App() {
         workDate: meta.workDate||"", dept: meta.dept||"", teamLeader: meta.teamLeader||"",
         workName: meta.workName||"", missingText: missingText
       };
-      saveHistory([entry2].concat(history).slice(0,100));
+      saveHistory([entry2].concat(history));
       clearInterval(iv); setScreen("result");
     } catch(e) {
       clearInterval(iv); setError("분석 오류: "+e.message); setScreen("error");
@@ -808,19 +808,32 @@ function AdminContent(props) {
           </div>
         </div>
         {history.length===0&&<p style={{padding:"2rem",textAlign:"center",fontSize:13,color:C.gray}}>검토 이력이 없습니다.</p>}
-        {history.slice(0,50).map(function(h,i,arr){
-          var pass=Object.values(h.results).filter(function(v){return v==="pass";}).length;
-          var fail=Object.values(h.results).filter(function(v){return v==="fail";}).length;
-          var cat=CATEGORIES.find(function(c){return c.label===h.category;});
-          return <div key={h.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:i<arr.length-1?"1px solid #f3f4f6":"none"}}>
-            <span style={{fontSize:18}}>{cat?cat.emoji:"📄"}</span>
-            <div style={{flex:1}}><p style={{margin:0,fontSize:13,fontWeight:600,color:C.navy}}>{h.category}{h.workName?" · "+h.workName:""}</p>
-            <p style={{margin:0,fontSize:11,color:C.gray}}>{h.user} · {h.date}{h.dept?" · "+h.dept:""}</p></div>
-            <span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.greenBg,color:C.green,fontWeight:600}}>✅ {pass}</span>
-            {fail>0&&<span style={{fontSize:12,padding:"2px 8px",borderRadius:20,background:C.redBg,color:C.red,fontWeight:600}}>❌ {fail}</span>}
-            <button onClick={function(){if(confirm("이 검토 이력을 삭제하시겠습니까?"))onSaveHistory(history.filter(function(x){return x.id!==h.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="삭제">🗑️</button>
-          </div>;
-        })}
+        {history.length>0&&<div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:C.bg}}>
+                {["번호","작업일자","허가서 유형","작업책임자 소속","감독확인 팀장","작업명","누락내용",""].map(function(h){
+                  return <th key={h} style={{padding:"8px 10px",textAlign:"left",fontWeight:700,color:C.navy,borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap"}}>{h}</th>;
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {history.map(function(h,idx){
+                return <tr key={h.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+                  <td style={{padding:"8px 10px",color:C.gray}}>{idx+1}</td>
+                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{h.workDate||"-"}</td>
+                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{h.category||"-"}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{h.dept||"-"}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{h.teamLeader||"-"}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{h.workName||"-"}</td>
+                  <td style={{padding:"8px 10px",color:h.missingText?C.red:C.gray}}>{h.missingText||"(없음)"}</td>
+                  <td style={{padding:"8px 10px",textAlign:"center"}}>
+                    <button onClick={function(){if(confirm("이 검토 이력을 삭제하시겠습니까?"))onSaveHistory(history.filter(function(x){return x.id!==h.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="삭제">🗑️</button>
+                  </td>                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>}
       </div>}
     </div>
   </div>;
