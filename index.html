@@ -345,7 +345,10 @@ function App() {
       if(!newIds[id]) db.collection("history").doc(String(id)).delete().catch(function(e){console.error(e);});
     });
     newHist.forEach(function(h){
-      if(!oldMap[h.id]) db.collection("history").doc(String(h.id)).set(h).catch(function(e){console.error(e);});
+      var old = oldMap[h.id];
+      if(!old || JSON.stringify(old)!==JSON.stringify(h)) {
+        db.collection("history").doc(String(h.id)).set(h).catch(function(e){console.error(e);});
+      }
     });
     setHistory(newHist);
   }
@@ -752,6 +755,18 @@ function AuthScreen(props) {
 function AdminContent(props) {
   var users=props.users,history=props.history,onSave=props.onSave,onSaveHistory=props.onSaveHistory,onBack=props.onBack;
   var [tab,setTab]=React.useState("users");
+  var [editingId,setEditingId]=React.useState(null);
+  var [editDraft,setEditDraft]=React.useState({});
+
+  function startEdit(h) {
+    setEditingId(h.id);
+    setEditDraft({workDate:h.workDate||"", category:h.category||"", dept:h.dept||"", teamLeader:h.teamLeader||"", workName:h.workName||"", missingText:h.missingText||""});
+  }
+  function cancelEdit() { setEditingId(null); setEditDraft({}); }
+  function saveEdit(id) {
+    onSaveHistory(history.map(function(x){ return x.id===id ? Object.assign({},x,editDraft) : x; }));
+    setEditingId(null); setEditDraft({});
+  }
 
   function exportHistoryToExcel() {
     var headers = ["번호","작업일자","허가서 유형","작업책임자 소속","감독확인 팀장","작업명","누락내용"];
@@ -821,17 +836,30 @@ function AdminContent(props) {
             </thead>
             <tbody>
               {history.map(function(h,idx){
-                return <tr key={h.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+                var isEd = editingId===h.id;
+                var inputStyle={width:"100%",padding:"4px 6px",fontSize:12,border:"1px solid "+C.accent,borderRadius:4,outline:"none"};
+                return <tr key={h.id} style={{borderBottom:"1px solid #f3f4f6",background:isEd?"#f0f7ff":"transparent"}}>
                   <td style={{padding:"8px 10px",color:C.gray}}>{idx+1}</td>
-                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{h.workDate||"-"}</td>
-                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{h.category||"-"}</td>
-                  <td style={{padding:"8px 10px",color:C.navy}}>{h.dept||"-"}</td>
-                  <td style={{padding:"8px 10px",color:C.navy}}>{h.teamLeader||"-"}</td>
-                  <td style={{padding:"8px 10px",color:C.navy}}>{h.workName||"-"}</td>
-                  <td style={{padding:"8px 10px",color:h.missingText?C.red:C.gray}}>{h.missingText||"(없음)"}</td>
-                  <td style={{padding:"8px 10px",textAlign:"center"}}>
-                    <button onClick={function(){if(confirm("이 검토 이력을 삭제하시겠습니까?"))onSaveHistory(history.filter(function(x){return x.id!==h.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="삭제">🗑️</button>
-                  </td>                </tr>;
+                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{isEd?<input style={inputStyle} value={editDraft.workDate} onChange={function(e){setEditDraft(Object.assign({},editDraft,{workDate:e.target.value}));}}/>:(h.workDate||"-")}</td>
+                  <td style={{padding:"8px 10px",color:C.navy,whiteSpace:"nowrap"}}>{isEd?
+                    <select style={inputStyle} value={editDraft.category} onChange={function(e){setEditDraft(Object.assign({},editDraft,{category:e.target.value}));}}>
+                      {CATEGORIES.map(function(c){return <option key={c.id} value={c.label}>{c.label}</option>;})}
+                    </select>
+                    :(h.category||"-")}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{isEd?<input style={inputStyle} value={editDraft.dept} onChange={function(e){setEditDraft(Object.assign({},editDraft,{dept:e.target.value}));}}/>:(h.dept||"-")}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{isEd?<input style={inputStyle} value={editDraft.teamLeader} onChange={function(e){setEditDraft(Object.assign({},editDraft,{teamLeader:e.target.value}));}}/>:(h.teamLeader||"-")}</td>
+                  <td style={{padding:"8px 10px",color:C.navy}}>{isEd?<input style={inputStyle} value={editDraft.workName} onChange={function(e){setEditDraft(Object.assign({},editDraft,{workName:e.target.value}));}}/>:(h.workName||"-")}</td>
+                  <td style={{padding:"8px 10px",color:h.missingText?C.red:C.gray}}>{isEd?<input style={inputStyle} value={editDraft.missingText} onChange={function(e){setEditDraft(Object.assign({},editDraft,{missingText:e.target.value}));}}/>:(h.missingText||"(없음)")}</td>
+                  <td style={{padding:"8px 10px",textAlign:"center",whiteSpace:"nowrap"}}>
+                    {isEd?<span style={{display:"flex",gap:6,justifyContent:"center"}}>
+                      <button onClick={function(){saveEdit(h.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="저장">💾</button>
+                      <button onClick={cancelEdit} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="취소">✖️</button>
+                    </span>:<span style={{display:"flex",gap:6,justifyContent:"center"}}>
+                      <button onClick={function(){startEdit(h);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="수정">✏️</button>
+                      <button onClick={function(){if(confirm("이 검토 이력을 삭제하시겠습니까?"))onSaveHistory(history.filter(function(x){return x.id!==h.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}} title="삭제">🗑️</button>
+                    </span>}
+                  </td>
+                </tr>;
               })}
             </tbody>
           </table>
