@@ -295,7 +295,7 @@ async function cropPdfBottomBase64(file) {
     canvas.width = viewport.width; canvas.height = viewport.height;
     await page.render({canvasContext: canvas.getContext("2d"), viewport: viewport}).promise;
 
-    var cropH = Math.round(canvas.height*0.20);
+    var cropH = Math.round(canvas.height*0.30);
     var cropY = canvas.height - cropH;
     var MAXW = 1400;
     var scale = canvas.width>MAXW ? MAXW/canvas.width : 1;
@@ -416,7 +416,7 @@ function App() {
           var cropB64 = await cropPdfBottomBase64(f);
           if (cropB64) {
             hasBottomCrop = true;
-            parts.push({type:"text", text:"아래 이미지는 방금 PDF 문서의 마지막 페이지 최하단(약 20%) 부분만 별도로 렌더링하여 확대한 이미지입니다. 이 확대 이미지를 반드시 참고해서, '작업완료확인 시 운전원 서명' 등 페이지 맨 아래쪽에 위치한 서명란의 실제 흔적 유무를 원본 문서보다 더 정확하게 재확인하세요."});
+            parts.push({type:"text", text:"아래 이미지는 방금 PDF 문서의 마지막 페이지 최하단(약 30%) 부분만 별도로 렌더링하여 확대한 이미지입니다. 이 확대 이미지를 반드시 참고해서, '작업완료확인 시 운전원 서명' 등 페이지 맨 아래쪽에 위치한 서명란의 실제 흔적 유무를 원본 문서보다 더 정확하게 재확인하세요."});
             parts.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:cropB64}});
           }
         }
