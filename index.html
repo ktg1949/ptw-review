@@ -464,6 +464,15 @@ function App() {
         r[entry[0]]=entry[1].status||"unknown";
         if(entry[1].note) n[entry[0]]=entry[1].note;
       });
+      // '작업완료확인 시 운전원·설비담당 서명' 항목은 AI가 반복적으로 오판(놓침/오판 양방향)하여
+      // 신뢰도를 확보하기 위해 AI 판정과 무관하게 항상 "검토필요"로 표시하고 사람이 직접 확인하도록 최종 확정함
+      var FORCE_UNKNOWN_IDS = ["psm_p4","haz_p4","hot_p4","hvy_p4","hgt_p4","cnf_p4","elc_p4"];
+      FORCE_UNKNOWN_IDS.forEach(function(fid){
+        if (r.hasOwnProperty(fid)) {
+          r[fid] = "unknown";
+          n[fid] = "사람 확인필요";
+        }
+      });
       setReviewResults(r); setReviewNotes(n); setReviewSummary(parsed.summary||"");
       var items = CRITERIA[selCat]||[];
       setActiveGroup(items.length?getTag(items[0].label):null);
