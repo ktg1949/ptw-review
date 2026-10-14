@@ -335,6 +335,11 @@ function App() {
   const [reviewMeasureDeficiency, setReviewMeasureDeficiency] = React.useState([]);
   // 검토 결과 - LOTO 도면 첨부 상태 (null: 미검토, "양호": 도면있음, "미흡": 도면없음, "na": LOTO 미해당)
   const [lotoDrawingStatus, setLotoDrawingStatus] = React.useState(null);
+  // 검토 결과 - 위험성평가/TBM 서명 인원 일치 여부 (null: 미검토, "일치": 일치, "불일치": 불일치, "na": 확인불가)
+  const [signCountMatch, setSignCountMatch] = React.useState(null);
+  // 위험성평가 서명 인원 수 / TBM 서명 인원 수 (숫자, 확인불가 시 null)
+  const [riskSignCount, setRiskSignCount] = React.useState(null);
+  const [tbmSignCount, setTbmSignCount] = React.useState(null);
 
   React.useEffect(function() {
     // 관리자 계정이 없으면 최초 1회 생성
@@ -409,6 +414,7 @@ function App() {
     setActiveGroup(null);
     setReviewRiskDeficiency([]); setReviewMeasureDeficiency([]);
     setLotoDrawingStatus(null);
+    setSignCountMatch(null); setRiskSignCount(null); setTbmSignCount(null);
     setScreen("review");
   }
 
@@ -449,7 +455,7 @@ function App() {
         });
         dbContext += "\n위 DB를 기반으로 아래 두 항목을 추가로 판별하세요:\n- riskDeficiency: DB의 위험요인 중 허가서 위험성평가 란에 전혀 언급되지 않았거나 완전히 누락된 항목들 (간략히, 항목당 20자 이내)\n- measureDeficiency: 위험요인은 허가서에 기재되어 있으나 해당 안전대책이 미흡하거나 불충분한 항목들 (간략히, 항목당 20자 이내)\n두 배열 모두 해당사항 없으면 빈 배열([])로 반환하세요.";
       }
-      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 문서를 분석할 때 페이지 중앙의 큰 표들뿐 아니라, 페이지 맨 아래쪽이나 우측 하단 구석처럼 작고 눈에 덜 띄는 위치에 있는 서명란도 반드시 동일한 주의력으로 확인하세요. 특히 '작업완료', '운전원 확인' 같은 항목은 페이지 최하단 구석에 작게 배치되는 경우가 많아 놓치기 쉬우니, 페이지의 가장 아래쪽 줄까지 빠짐없이 스캔하세요."+(hasBottomCrop?" 이번 요청에는 문서 마지막 페이지 최하단부만 확대 렌더링한 별도 이미지도 함께 제공되어 있으니, '작업완료확인 시 운전원·설비담당 서명' 등 하단부 서명 판정 시 반드시 그 확대 이미지를 우선적으로 참고하세요.":"")+"\n- 서명란 판정 기준(매우 중요, 문서 전체의 모든 서명·사인란에 공통 적용 — 결재란, TBM 일지, 안전점검표, 위험성평가 서명, 작업완료 확인, LOTO 서명, 안전감시자 서명 등 예외 없이 전부 동일하게 적용): 서명은 이름을 정확히 읽거나 판독할 필요가 전혀 없습니다. 해당 서명란/사인란 안에 어떤 형태로든 필기 흔적(사인, 도장, 낙서 같은 표시, 체크, X자 등 무엇이든)이 존재하면 '서명 있음'으로 보고 pass로 판정하세요. 글씨체가 흘려 써서 이름을 알아볼 수 없어도 상관없이 pass입니다. 오직 그 칸이 완전히 비어있어서 아무 흔적도 없을 때만 fail로 판정하세요. 즉 '무엇이 적혀있는지'가 아니라 '무엇이든 적혀있는지'만 확인하면 됩니다.\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요(단, 위 서명란 판정 기준대로 흔적만 있으면 됨). 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축 등의 이유로 그 칸 자체에 뭔가 있는지 없는지조차 확신하기 어렵다면(흔적의 유무 자체가 불확실한 경우), 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n- '작업완료확인 시 운전원·설비담당 서명' 항목은 문서 하단에 위치하며, 양식에 따라 구성이 조금씩 다를 수 있습니다: (a) '작업완료 및 정비완료 확인' 같은 체크박스/체크표시, 그리고 (b) 그 옆에 있는 서명란들 — '운전원' 칸과, 있는 경우 '설비담당'(또는 '운전설비담당') 칸까지 별도로 존재할 수 있습니다. **이 둘은 완전히 별개입니다. (a) 체크박스에 체크(☑, ✓ 등)가 되어 있는 것을 서명이 있다고 착각하면 절대 안 됩니다.** 반드시 (b) 서명란(운전원/설비담당 칸) 자체 안에 실제 필기 흔적이 있는지 별도로 확인하세요. 이 항목은 여러 서명란 중 어떤 칸이든 상관없이, 서명란 안에 서명 흔적이 하나라도 보이면 pass로 판정하세요(운전원 칸에만 있어도 되고, 설비담당 칸에만 있어도 되고, 둘 다 있어도 됨 — 반드시 둘 다 채워질 필요는 없음). 오직 서명란 전체(운전원·설비담당 칸 모두)에 체크박스 표시 말고는 아무 필기 흔적도 없이 완전히 비어있을 때만 fail로 판정하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요. **매우 중요: 이 정보들은 반드시 문서에 실제로 적혀 있는 글자를 옮겨적으세요. 절대 다른 칸의 값을 가져오거나, 문서에 없는 이름/부서명을 지어내지 마세요. 다만 글씨가 다소 흐릿하거나 필기체라도, 그 칸 자체에 뭔가 적혀 있다면 최대한 판독해서 가장 근접하게 읽은 값을 기입하세요(빈칸으로 남기지 말 것). 정말로 그 칸 자체가 비어있어서 아무것도 적혀 있지 않은 경우에만 빈 문자열(\"\")로 남겨두세요.**\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 바로 뒤에 기재된 값 그대로 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 실제로 적힌 성명 그대로. 다른 열의 팀장이나 다른 인물과 혼동하지 말 것.\n- workName: 작업명\n"+dbContext+"\n\n[LOTO 도면 첨부 확인 — 매우 중요]\nLOTO 발행번호란을 확인하세요:\n- LOTO 발행번호가 기재되어 있는 경우: 도면(P&ID, 계통도, 배관도, 기기배치도 등 설비 관련 도면)이 문서에 첨부되어 있는지 확인하세요. 첨부서류 체크란에 도면 관련 항목이 체크되어 있거나, 실제 도면 이미지/페이지가 포함되어 있으면 '양호'. 도면이 전혀 없으면 '미흡'.\n- LOTO 발행번호란이 비어있는 경우(LOTO 미해당): '나'(na)로 반환.\n→ lotoDrawing 필드에 반드시 \"양호\"|\"미흡\"|\"na\" 중 하나만 반환하세요.\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"},\"lotoDrawing\":\"양호|미흡|na\""+( dbItems.length>0 ? ",\"riskDeficiency\":[\"DB에 있으나 허가서 위험성평가에 누락된 위험요인\"],\"measureDeficiency\":[\"위험요인은 있으나 안전대책이 미흡한 항목\"]" : "" )+"}"});
+      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 문서를 분석할 때 페이지 중앙의 큰 표들뿐 아니라, 페이지 맨 아래쪽이나 우측 하단 구석처럼 작고 눈에 덜 띄는 위치에 있는 서명란도 반드시 동일한 주의력으로 확인하세요. 특히 '작업완료', '운전원 확인' 같은 항목은 페이지 최하단 구석에 작게 배치되는 경우가 많아 놓치기 쉬우니, 페이지의 가장 아래쪽 줄까지 빠짐없이 스캔하세요."+(hasBottomCrop?" 이번 요청에는 문서 마지막 페이지 최하단부만 확대 렌더링한 별도 이미지도 함께 제공되어 있으니, '작업완료확인 시 운전원·설비담당 서명' 등 하단부 서명 판정 시 반드시 그 확대 이미지를 우선적으로 참고하세요.":"")+"\n- 서명란 판정 기준(매우 중요, 문서 전체의 모든 서명·사인란에 공통 적용 — 결재란, TBM 일지, 안전점검표, 위험성평가 서명, 작업완료 확인, LOTO 서명, 안전감시자 서명 등 예외 없이 전부 동일하게 적용): 서명은 이름을 정확히 읽거나 판독할 필요가 전혀 없습니다. 해당 서명란/사인란 안에 어떤 형태로든 필기 흔적(사인, 도장, 낙서 같은 표시, 체크, X자 등 무엇이든)이 존재하면 '서명 있음'으로 보고 pass로 판정하세요. 글씨체가 흘려 써서 이름을 알아볼 수 없어도 상관없이 pass입니다. 오직 그 칸이 완전히 비어있어서 아무 흔적도 없을 때만 fail로 판정하세요. 즉 '무엇이 적혀있는지'가 아니라 '무엇이든 적혀있는지'만 확인하면 됩니다.\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요(단, 위 서명란 판정 기준대로 흔적만 있으면 됨). 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축 등의 이유로 그 칸 자체에 뭔가 있는지 없는지조차 확신하기 어렵다면(흔적의 유무 자체가 불확실한 경우), 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n- '작업완료확인 시 운전원·설비담당 서명' 항목은 문서 하단에 위치하며, 양식에 따라 구성이 조금씩 다를 수 있습니다: (a) '작업완료 및 정비완료 확인' 같은 체크박스/체크표시, 그리고 (b) 그 옆에 있는 서명란들 — '운전원' 칸과, 있는 경우 '설비담당'(또는 '운전설비담당') 칸까지 별도로 존재할 수 있습니다. **이 둘은 완전히 별개입니다. (a) 체크박스에 체크(☑, ✓ 등)가 되어 있는 것을 서명이 있다고 착각하면 절대 안 됩니다.** 반드시 (b) 서명란(운전원/설비담당 칸) 자체 안에 실제 필기 흔적이 있는지 별도로 확인하세요. 이 항목은 여러 서명란 중 어떤 칸이든 상관없이, 서명란 안에 서명 흔적이 하나라도 보이면 pass로 판정하세요(운전원 칸에만 있어도 되고, 설비담당 칸에만 있어도 되고, 둘 다 있어도 됨 — 반드시 둘 다 채워질 필요는 없음). 오직 서명란 전체(운전원·설비담당 칸 모두)에 체크박스 표시 말고는 아무 필기 흔적도 없이 완전히 비어있을 때만 fail로 판정하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요. **매우 중요: 이 정보들은 반드시 문서에 실제로 적혀 있는 글자를 옮겨적으세요. 절대 다른 칸의 값을 가져오거나, 문서에 없는 이름/부서명을 지어내지 마세요. 다만 글씨가 다소 흐릿하거나 필기체라도, 그 칸 자체에 뭔가 적혀 있다면 최대한 판독해서 가장 근접하게 읽은 값을 기입하세요(빈칸으로 남기지 말 것). 정말로 그 칸 자체가 비어있어서 아무것도 적혀 있지 않은 경우에만 빈 문자열(\"\")로 남겨두세요.**\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 바로 뒤에 기재된 값 그대로 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 실제로 적힌 성명 그대로. 다른 열의 팀장이나 다른 인물과 혼동하지 말 것.\n- workName: 작업명\n"+dbContext+"\n\n[LOTO 도면 첨부 확인 — 매우 중요]\nLOTO 발행번호란을 확인하세요:\n- LOTO 발행번호가 기재되어 있는 경우: 도면(P&ID, 계통도, 배관도, 기기배치도 등 설비 관련 도면)이 문서에 첨부되어 있는지 확인하세요. 첨부서류 체크란에 도면 관련 항목이 체크되어 있거나, 실제 도면 이미지/페이지가 포함되어 있으면 '양호'. 도면이 전혀 없으면 '미흡'.\n- LOTO 발행번호란이 비어있는 경우(LOTO 미해당): '나'(na)로 반환.\n→ lotoDrawing 필드에 반드시 \"양호\"|\"미흡\"|\"na\" 중 하나만 반환하세요.\n\n[위험성평가 ↔ TBM 서명 인원 비교 — 매우 중요]\n위험성평가 서명란(참여자 서명 칸)과 TBM 일지 서명란(참석자 서명 칸)에서 각각 서명(필기 흔적이 있는 칸)이 몇 개인지 세어 비교하세요.\n- 위험성평가 서명 인원(riskSignCount): 위험성평가 표의 참여자/서명 칸에서 서명 흔적이 있는 칸의 수 (숫자, 확인 불가 시 null)\n- TBM 서명 인원(tbmSignCount): TBM 일지의 참석자 서명 칸에서 서명 흔적이 있는 칸의 수 (숫자, 확인 불가 시 null)\n- signCountMatch: 두 인원이 일치하면 \"일치\", 다르면 \"불일치\", 어느 한쪽이라도 확인 불가면 \"na\"\n※ 서명 칸을 셀 때는 빈 칸을 제외하고 실제 흔적이 있는 칸만 세세요. 두 문서의 서명 인원이 정확히 같아야 '일치'입니다.\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"},\"lotoDrawing\":\"양호|미흡|na\",\"riskSignCount\":null,\"tbmSignCount\":null,\"signCountMatch\":\"일치|불일치|na\""+( dbItems.length>0 ? ",\"riskDeficiency\":[\"DB에 있으나 허가서 위험성평가에 누락된 위험요인\"],\"measureDeficiency\":[\"위험요인은 있으나 안전대책이 미흡한 항목\"]" : "" )+"}"});
 
       var resp, att = 0;
       while (att < 5) {
@@ -503,6 +509,9 @@ function App() {
       setReviewRiskDeficiency(Array.isArray(parsed.riskDeficiency) ? parsed.riskDeficiency : []);
       setReviewMeasureDeficiency(Array.isArray(parsed.measureDeficiency) ? parsed.measureDeficiency : []);
       setLotoDrawingStatus(["양호","미흡","na"].includes(parsed.lotoDrawing) ? parsed.lotoDrawing : null);
+      setSignCountMatch(["일치","불일치","na"].includes(parsed.signCountMatch) ? parsed.signCountMatch : null);
+      setRiskSignCount(typeof parsed.riskSignCount==="number" ? parsed.riskSignCount : null);
+      setTbmSignCount(typeof parsed.tbmSignCount==="number" ? parsed.tbmSignCount : null);
       var items = CRITERIA[selCat]||[];
       setActiveGroup(items.length?getTag(items[0].label):null);
       var meta = parsed.meta||{};
@@ -645,10 +654,12 @@ function App() {
               var isSel=curGroup&&curGroup.tag===g.tag;
               var hasDbDeficiency = g.tag==="②위험성평가"&&(reviewRiskDeficiency.length>0||reviewMeasureDeficiency.length>0);
               var hasLotoDrawingIssue = g.tag==="③LOTO 체결/해제"&&lotoDrawingStatus==="미흡";
+              var hasSignMismatch = (g.tag==="②위험성평가"||g.tag==="⑤TBM 일지")&&signCountMatch==="불일치";
               return <button key={g.tag} onClick={function(){setActiveGroup(g.tag);}} style={{padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:isSel?700:400,cursor:"pointer",background:isSel?tc.bg:"#fff",color:isSel?tc.color:C.gray,border:"1px solid "+(isSel?tc.border:"#e5e7eb"),display:"flex",alignItems:"center",gap:4}}>
                 {gf>0&&<span style={{width:6,height:6,borderRadius:"50%",background:C.red,display:"inline-block"}}/>}
                 {hasDbDeficiency&&<span style={{width:6,height:6,borderRadius:"50%",background:"#f59e0b",display:"inline-block"}}/>}
                 {hasLotoDrawingIssue&&<span style={{width:6,height:6,borderRadius:"50%",background:"#ef4444",display:"inline-block"}}/>}
+                {hasSignMismatch&&<span style={{width:6,height:6,borderRadius:"50%",background:"#f97316",display:"inline-block"}}/>}
                 {g.tag} {gp}/{g.items.length}
               </button>;
             })}
@@ -682,6 +693,44 @@ function App() {
                 </div>
                 <span style={{marginLeft:"auto",fontSize:11,padding:"2px 10px",borderRadius:20,fontWeight:700,background:lotoDrawingStatus==="양호"?"#dcfce7":"#fee2e2",color:lotoDrawingStatus==="양호"?"#166534":"#991b1b",border:"1px solid "+(lotoDrawingStatus==="양호"?"#86efac":"#fca5a5")}}>
                   {lotoDrawingStatus==="양호"?"도면 ✔":"도면 ✘"}
+                </span>
+              </div>
+            </div>}
+            {/* ②위험성평가 그룹일 때 서명 인원 불일치 표시 */}
+            {curGroup&&curGroup.tag==="②위험성평가"&&signCountMatch&&signCountMatch!=="na"&&<div style={{borderTop:"2px solid #fed7aa",background:signCountMatch==="불일치"?"#fff7ed":"#f0fdf4"}}>
+              <div style={{padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:15}}>{signCountMatch==="일치"?"✅":"🟠"}</span>
+                <div style={{flex:1}}>
+                  <span style={{fontSize:13,fontWeight:700,color:signCountMatch==="일치"?"#15803d":"#9a3412"}}>
+                    위험성평가 인원 {signCountMatch==="일치"?"일치":"불일치"}
+                  </span>
+                  <span style={{fontSize:11,color:signCountMatch==="일치"?"#166534":"#c2410c",marginLeft:8}}>
+                    {signCountMatch==="일치"
+                      ? "— 위험성평가 서명("+(riskSignCount!=null?riskSignCount+"명":"?")+")"+"와 TBM 서명("+(tbmSignCount!=null?tbmSignCount+"명":"?")+")"+" 일치"
+                      : "— 위험성평가 "+(riskSignCount!=null?riskSignCount+"명":"?")+"  ↔  TBM "+(tbmSignCount!=null?tbmSignCount+"명":"?")}
+                  </span>
+                </div>
+                <span style={{fontSize:11,padding:"2px 10px",borderRadius:20,fontWeight:700,background:signCountMatch==="일치"?"#dcfce7":"#ffedd5",color:signCountMatch==="일치"?"#166534":"#9a3412",border:"1px solid "+(signCountMatch==="일치"?"#86efac":"#fdba74")}}>
+                  {signCountMatch==="일치"?"인원 ✔":"인원 ✘"}
+                </span>
+              </div>
+            </div>}
+            {/* ⑤TBM 일지 그룹일 때 서명 인원 불일치 표시 */}
+            {curGroup&&curGroup.tag==="⑤TBM 일지"&&signCountMatch&&signCountMatch!=="na"&&<div style={{borderTop:"2px solid #fed7aa",background:signCountMatch==="불일치"?"#fff7ed":"#f0fdf4"}}>
+              <div style={{padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:15}}>{signCountMatch==="일치"?"✅":"🟠"}</span>
+                <div style={{flex:1}}>
+                  <span style={{fontSize:13,fontWeight:700,color:signCountMatch==="일치"?"#15803d":"#9a3412"}}>
+                    TBM 인원 {signCountMatch==="일치"?"일치":"불일치"}
+                  </span>
+                  <span style={{fontSize:11,color:signCountMatch==="일치"?"#166534":"#c2410c",marginLeft:8}}>
+                    {signCountMatch==="일치"
+                      ? "— TBM 서명("+(tbmSignCount!=null?tbmSignCount+"명":"?")+")"+"와 위험성평가 서명("+(riskSignCount!=null?riskSignCount+"명":"?")+")"+" 일치"
+                      : "— TBM "+(tbmSignCount!=null?tbmSignCount+"명":"?")+"  ↔  위험성평가 "+(riskSignCount!=null?riskSignCount+"명":"?")}
+                  </span>
+                </div>
+                <span style={{fontSize:11,padding:"2px 10px",borderRadius:20,fontWeight:700,background:signCountMatch==="일치"?"#dcfce7":"#ffedd5",color:signCountMatch==="일치"?"#166534":"#9a3412",border:"1px solid "+(signCountMatch==="일치"?"#86efac":"#fdba74")}}>
+                  {signCountMatch==="일치"?"인원 ✔":"인원 ✘"}
                 </span>
               </div>
             </div>}
