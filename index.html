@@ -328,6 +328,16 @@ function App() {
   const [activeGroup, setActiveGroup] = React.useState(null);
   const [apiKey, setApiKey] = React.useState(localStorage.getItem("ptw_apikey")||"");
   const fileRef = React.useRef();
+  // JSA 위험성평가 검토 상태
+  const [jsaFile, setJsaFile] = React.useState(null);
+  const [jsaResult, setJsaResult] = React.useState(null);
+  const [jsaFilter, setJsaFilter] = React.useState("전체");
+  const jsaFileRef = React.useRef();
+  // 위험성평가 DB (작업유형별 위험요인/안전대책 데이터베이스)
+  const [jsaDB, setJsaDB] = React.useState({});
+  // 검토 결과 - DB 기반 미흡사항
+  const [reviewRiskDeficiency, setReviewRiskDeficiency] = React.useState([]);
+  const [reviewMeasureDeficiency, setReviewMeasureDeficiency] = React.useState([]);
 
   React.useEffect(function() {
     // 관리자 계정이 없으면 최초 1회 생성
@@ -351,7 +361,13 @@ function App() {
         localStorage.setItem("ptw_apikey", snap.data().apiKey);
       }
     }, function(err){ console.error("apikey sync error:", err); });
-    return function(){ unsubUsers(); unsubHist(); unsubKey(); };
+    // 위험성평가 DB 실시간 동기화 (작업유형별 위험요인/안전대책)
+    var unsubJsaDB = db.collection("jsadb").onSnapshot(function(qs){
+      var dbMap = {};
+      qs.forEach(function(d){ dbMap[d.id] = d.data(); });
+      setJsaDB(dbMap);
+    }, function(err){ console.error("jsadb sync error:", err); });
+    return function(){ unsubUsers(); unsubHist(); unsubKey(); unsubJsaDB(); };
   }, []);
 
   // 배열 전체를 넘기던 기존 호출부와 호환되도록, 이전 상태와 비교해 변경분만 Firestore에 반영
@@ -393,7 +409,116 @@ function App() {
     if (!apiKey) { alert("API 키를 먼저 설정해 주세요."); return; }
     setSelCat(catId); setFiles([]); setReviewResults({});
     setReviewNotes({}); setReviewSummary(""); setError("");
-    setActiveGroup(null); setScreen("review");
+    setActiveGroup(null);
+    setReviewRiskDeficiency([]); setReviewMeasureDeficiency([]);
+    setScreen("review");
+  }
+
+  function startJSAReview() {
+    if (!apiKey) { alert("API 키를 먼저 설정해 주세요."); return; }
+    setJsaFile(null); setJsaResult(null); setJsaFilter("전체"); setError("");
+    setScreen("jsa_review");
+  }
+
+  async function analyzeJSA() {
+    if (!jsaFile) return;
+    setError(""); setScreen("jsa_loading");
+    var msgs = ["파일 분석 중...","위험성평가 항목 추출 중...","관련성 검토 중...","적정성 평가 중...","결과 생성 중..."];
+    var mi = 0; setLoadMsg(msgs[0]);
+    var iv = setInterval(function(){ mi=(mi+1)%msgs.length; setLoadMsg(msgs[mi]); }, 1800);
+    try {
+      var parts = [];
+      var isPdf = jsaFile.type === "application/pdf";
+      var isExcel = jsaFile.name.match(/\.(xlsx|xls|xlsm)$/i);
+
+      if (isPdf) {
+        var b64 = await toBase64(jsaFile);
+        parts.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
+      } else if (isExcel) {
+        var arrBuf = await jsaFile.arrayBuffer();
+        var wb = XLSX.read(new Uint8Array(arrBuf), {type:"array"});
+        var sheetText = "";
+        wb.SheetNames.forEach(function(sn) {
+          var ws = wb.Sheets[sn];
+          var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+          sheetText += "=== 시트: " + sn + " ===\n";
+          rows.forEach(function(row) { sheetText += row.join("\t") + "\n"; });
+        });
+        parts.push({type:"text", text:"아래는 위험성평가(JSA) 엑셀 파일의 내용입니다:\n\n" + sheetText});
+      } else {
+        var b64img = await toBase64(jsaFile);
+        parts.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:b64img}});
+      }
+
+      parts.push({type:"text", text:`당신은 PSM(공정안전관리) 전문가로서 위험성평가(JSA) 문서를 검토합니다.
+
+위 문서를 분석하여 각 작업단계별 위험성평가 항목이 해당 작업 유형에 적합한지 평가하세요.
+
+평가 기준:
+- 관련성: 해당 작업과 실제로 관련된 위험요인인지 (관련/무관/불명확)
+- 적정성: 안전대책이 위험요인을 충분히 통제하는지 (적정/부적정/보완필요)
+- 점수: 0-100 (100=완벽, 0=전혀 부적절)
+- issues: 문제점 목록 (없으면 빈 배열)
+- suggestion: 개선 제안 (없으면 null)
+
+JSON만 출력 (다른 텍스트 없이):
+{
+  "workType": "작업 유형 (예: 배관 용접작업, 전기패널 점검 등)",
+  "totalItems": 총항목수,
+  "overallScore": 0-100,
+  "overallJudgment": "적정|부적정|보완필요",
+  "summary": "전체 평가 요약 (100자 이내)",
+  "items": [
+    {
+      "번호": "항목번호(없으면 순번)",
+      "작업단계": "작업단계명",
+      "유해위험요인": "위험요인",
+      "현재안전대책": "안전대책",
+      "relevance": "관련|무관|불명확",
+      "adequacy": "적정|부적정|보완필요",
+      "score": 0-100,
+      "issues": [],
+      "suggestion": null
+    }
+  ],
+  "missingRisks": ["누락된 위험요인 목록"],
+  "irrelevantItems": ["무관한 항목 목록"],
+  "criticalFindings": ["중요 발견사항"]
+}`});
+
+      var resp, att = 0;
+      while (att < 5) {
+        att++;
+        if(att===1) await new Promise(function(r){setTimeout(r,300);});
+        resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":apiKey,
+            "anthropic-version":"2023-06-01",
+            "anthropic-dangerous-direct-browser-access":"true"
+          },
+          body:JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:4000, temperature:0, messages:[{role:"user", content:parts}]})
+        });
+        if (resp.status===429||resp.status===529||resp.status===503) {
+          var wait = att===1?5000:att===2?10000:att===3?20000:30000;
+          setLoadMsg("요청 한도 초과 — "+att+"회 재시도 ("+Math.round(wait/1000)+"초 대기)");
+          await new Promise(function(r){setTimeout(r,wait);});
+          continue;
+        }
+        break;
+      }
+      if (!resp.ok) throw new Error("API "+resp.status);
+      var data = await resp.json();
+      var raw = (data.content||[]).map(function(c){return c.text||"";}).join("");
+      var clean = raw.replace(/```json|```/g,"").trim();
+      var parsed;
+      try { parsed = JSON.parse(clean); }
+      catch(e) { parsed = {workType:"알수없음",totalItems:0,overallScore:0,overallJudgment:"보완필요",summary:"분석 실패",items:[],missingRisks:[],irrelevantItems:[],criticalFindings:[]}; }
+      clearInterval(iv); setJsaResult(parsed); setJsaFilter("전체"); setScreen("jsa_result");
+    } catch(e) {
+      clearInterval(iv); setError("JSA 분석 오류: "+e.message); setScreen("error");
+    }
   }
 
   async function analyze() {
@@ -423,7 +548,17 @@ function App() {
       }
       var cat = CATEGORIES.find(function(c){return c.id===selCat;});
       var crit = (CRITERIA[selCat]||[]).map(function(i,idx){return (idx+1)+". "+getText(i.label)+" ["+i.id+"]";}).join("\n");
-      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 문서를 분석할 때 페이지 중앙의 큰 표들뿐 아니라, 페이지 맨 아래쪽이나 우측 하단 구석처럼 작고 눈에 덜 띄는 위치에 있는 서명란도 반드시 동일한 주의력으로 확인하세요. 특히 '작업완료', '운전원 확인' 같은 항목은 페이지 최하단 구석에 작게 배치되는 경우가 많아 놓치기 쉬우니, 페이지의 가장 아래쪽 줄까지 빠짐없이 스캔하세요."+(hasBottomCrop?" 이번 요청에는 문서 마지막 페이지 최하단부만 확대 렌더링한 별도 이미지도 함께 제공되어 있으니, '작업완료확인 시 운전원·설비담당 서명' 등 하단부 서명 판정 시 반드시 그 확대 이미지를 우선적으로 참고하세요.":"")+"\n- 서명란 판정 기준(매우 중요, 문서 전체의 모든 서명·사인란에 공통 적용 — 결재란, TBM 일지, 안전점검표, 위험성평가 서명, 작업완료 확인, LOTO 서명, 안전감시자 서명 등 예외 없이 전부 동일하게 적용): 서명은 이름을 정확히 읽거나 판독할 필요가 전혀 없습니다. 해당 서명란/사인란 안에 어떤 형태로든 필기 흔적(사인, 도장, 낙서 같은 표시, 체크, X자 등 무엇이든)이 존재하면 '서명 있음'으로 보고 pass로 판정하세요. 글씨체가 흘려 써서 이름을 알아볼 수 없어도 상관없이 pass입니다. 오직 그 칸이 완전히 비어있어서 아무 흔적도 없을 때만 fail로 판정하세요. 즉 '무엇이 적혀있는지'가 아니라 '무엇이든 적혀있는지'만 확인하면 됩니다.\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요(단, 위 서명란 판정 기준대로 흔적만 있으면 됨). 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축 등의 이유로 그 칸 자체에 뭔가 있는지 없는지조차 확신하기 어렵다면(흔적의 유무 자체가 불확실한 경우), 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n- '작업완료확인 시 운전원·설비담당 서명' 항목은 문서 하단에 위치하며, 양식에 따라 구성이 조금씩 다를 수 있습니다: (a) '작업완료 및 정비완료 확인' 같은 체크박스/체크표시, 그리고 (b) 그 옆에 있는 서명란들 — '운전원' 칸과, 있는 경우 '설비담당'(또는 '운전설비담당') 칸까지 별도로 존재할 수 있습니다. **이 둘은 완전히 별개입니다. (a) 체크박스에 체크(☑, ✓ 등)가 되어 있는 것을 서명이 있다고 착각하면 절대 안 됩니다.** 반드시 (b) 서명란(운전원/설비담당 칸) 자체 안에 실제 필기 흔적이 있는지 별도로 확인하세요. 이 항목은 여러 서명란 중 어떤 칸이든 상관없이, 서명란 안에 서명 흔적이 하나라도 보이면 pass로 판정하세요(운전원 칸에만 있어도 되고, 설비담당 칸에만 있어도 되고, 둘 다 있어도 됨 — 반드시 둘 다 채워질 필요는 없음). 오직 서명란 전체(운전원·설비담당 칸 모두)에 체크박스 표시 말고는 아무 필기 흔적도 없이 완전히 비어있을 때만 fail로 판정하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요. **매우 중요: 이 정보들은 반드시 문서에 실제로 적혀 있는 글자를 옮겨적으세요. 절대 다른 칸의 값을 가져오거나, 문서에 없는 이름/부서명을 지어내지 마세요. 다만 글씨가 다소 흐릿하거나 필기체라도, 그 칸 자체에 뭔가 적혀 있다면 최대한 판독해서 가장 근접하게 읽은 값을 기입하세요(빈칸으로 남기지 말 것). 정말로 그 칸 자체가 비어있어서 아무것도 적혀 있지 않은 경우에만 빈 문자열(\"\")로 남겨두세요.**\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 바로 뒤에 기재된 값 그대로 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 실제로 적힌 성명 그대로. 다른 열의 팀장이나 다른 인물과 혼동하지 말 것.\n- workName: 작업명\n\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"}}"});
+      // 위험성평가 DB 컨텍스트 생성
+      var dbItems = (jsaDB[selCat] && jsaDB[selCat].items) ? jsaDB[selCat].items : [];
+      var dbContext = "";
+      if (dbItems.length > 0) {
+        dbContext = "\n\n[위험성평가 위험요인 데이터베이스 — "+cat.label+"]\n이 작업유형에 대해 예상되는 위험요인과 안전대책 목록입니다. 허가서의 위험성평가 란과 비교하세요:\n";
+        dbItems.forEach(function(item, idx) {
+          dbContext += (idx+1)+". 위험요인: "+(item["위험요인"]||"")+" / 안전대책: "+(item["안전대책"]||"")+"\n";
+        });
+        dbContext += "\n위 DB를 기반으로 아래 두 항목을 추가로 판별하세요:\n- riskDeficiency: DB의 위험요인 중 허가서 위험성평가 란에 전혀 언급되지 않았거나 완전히 누락된 항목들 (간략히, 항목당 20자 이내)\n- measureDeficiency: 위험요인은 허가서에 기재되어 있으나 해당 안전대책이 미흡하거나 불충분한 항목들 (간략히, 항목당 20자 이내)\n두 배열 모두 해당사항 없으면 빈 배열([])로 반환하세요.";
+      }
+      parts.push({type:"text", text:"당신은 꼼꼼하지만 공정한 산업안전 문서 검토 전문가입니다. ["+cat.label+"] 문서를 분석하세요.\n\n중요한 검토 원칙:\n- 문서를 분석할 때 페이지 중앙의 큰 표들뿐 아니라, 페이지 맨 아래쪽이나 우측 하단 구석처럼 작고 눈에 덜 띄는 위치에 있는 서명란도 반드시 동일한 주의력으로 확인하세요. 특히 '작업완료', '운전원 확인' 같은 항목은 페이지 최하단 구석에 작게 배치되는 경우가 많아 놓치기 쉬우니, 페이지의 가장 아래쪽 줄까지 빠짐없이 스캔하세요."+(hasBottomCrop?" 이번 요청에는 문서 마지막 페이지 최하단부만 확대 렌더링한 별도 이미지도 함께 제공되어 있으니, '작업완료확인 시 운전원·설비담당 서명' 등 하단부 서명 판정 시 반드시 그 확대 이미지를 우선적으로 참고하세요.":"")+"\n- 서명란 판정 기준(매우 중요, 문서 전체의 모든 서명·사인란에 공통 적용 — 결재란, TBM 일지, 안전점검표, 위험성평가 서명, 작업완료 확인, LOTO 서명, 안전감시자 서명 등 예외 없이 전부 동일하게 적용): 서명은 이름을 정확히 읽거나 판독할 필요가 전혀 없습니다. 해당 서명란/사인란 안에 어떤 형태로든 필기 흔적(사인, 도장, 낙서 같은 표시, 체크, X자 등 무엇이든)이 존재하면 '서명 있음'으로 보고 pass로 판정하세요. 글씨체가 흘려 써서 이름을 알아볼 수 없어도 상관없이 pass입니다. 오직 그 칸이 완전히 비어있어서 아무 흔적도 없을 때만 fail로 판정하세요. 즉 '무엇이 적혀있는지'가 아니라 '무엇이든 적혀있는지'만 확인하면 됩니다.\n- 항목명에 '결재 서명', '체크 완료' 등으로 되어 있어도, 이는 관련된 모든 칸/란이 빠짐없이 채워졌는지를 뜻합니다. 문서 안에 서명이나 체크가 '어딘가 하나라도' 있다고 해서 바로 전체를 pass로 판정하지 마세요.\n- 결재란처럼 여러 단계(예: 신청/검토·확인/검토)와 여러 역할(회사명/팀장/담당/리더/파트장 등)로 나뉜 표는, 그 표의 모든 칸을 하나하나 개별적으로 확인하세요(단, 위 서명란 판정 기준대로 흔적만 있으면 됨). 명백히 비어있는 칸이 실제로 보이면 fail로 판정하고, note에 구체적으로 어느 칸이 비었는지 적으세요.\n- 체크리스트(□/○ 등)가 여러 개 나열된 항목도 각 체크박스를 개별적으로 확인하세요. 실제로 체크가 안 된 게 명확히 보이면 fail로 판정하세요.\n- 매우 중요: fail은 '비어있는 것이 이미지에서 명확히 보일 때'만 사용하세요. 이미지 화질, 각도, 압축 등의 이유로 그 칸 자체에 뭔가 있는지 없는지조차 확신하기 어렵다면(흔적의 유무 자체가 불확실한 경우), 절대로 임의로 fail 처리하지 말고 status를 'unknown'으로 표시하고 note에 '화질상 확인어려움' 등 이유를 적으세요. fail은 실제 누락을 의미하므로, 단순히 확신이 안 선다는 이유로 fail을 남발하면 안 됩니다.\n- LOTO(체결/해제) 관련 항목(LOTO 발행번호, 기기조작 및 서명 등)은 아래 규칙으로 판정하세요: PTW 문서에서 'LOTO 발행번호'란을 확인했을 때, 그 란이 비어있으면(공란) 체크박스 상태나 첨부서류 여부와 상관없이 관련 LOTO 항목 전체를 'pass'로 판정하세요. LOTO 발행번호가 실제로 기재되어 있는 경우에만, 나머지 관련 내용(서명 등)이 채워졌는지 정상적으로 확인해서 pass/fail을 판정하세요.\n- 안전감시자지정서 항목은 반드시 아래 3단계 순서로 판정하세요 (작업 특성에 따라 애초에 해당하지 않을 수 있음):\n  1단계) PTW 본문에 '안전감시자 필요여부' 체크박스가 있는지 확인. 체크가 안 되어 있거나 '불필요/해당없음'으로 표시되어 있다면 → 관련 항목 전부 status를 'na'(해당없음)로 판정하고 즉시 종료 (누락으로 판정하지 말 것).\n  2단계) 필요함으로 체크되어 있다면, PTW의 '첨부서류' 체크란에서 '안전감시자 지정서'가 체크/첨부되어 있는지 확인. 체크가 안 되어 있다면 → fail로 판정하고 note에 '첨부서류 미체크' 등으로 기재.\n  3단계) 첨부서류 체크까지 확인되면, 실제 내용(감시자 인적사항, 서명 등)이 기재되어 있는지 확인하여 최종 pass/fail을 판정.\n  즉, 1단계에서 애초에 불필요한 작업이면 절대 fail이나 unknown으로 판정하지 말고 na로 처리하세요.\n- '작업완료확인 시 운전원·설비담당 서명' 항목은 문서 하단에 위치하며, 양식에 따라 구성이 조금씩 다를 수 있습니다: (a) '작업완료 및 정비완료 확인' 같은 체크박스/체크표시, 그리고 (b) 그 옆에 있는 서명란들 — '운전원' 칸과, 있는 경우 '설비담당'(또는 '운전설비담당') 칸까지 별도로 존재할 수 있습니다. **이 둘은 완전히 별개입니다. (a) 체크박스에 체크(☑, ✓ 등)가 되어 있는 것을 서명이 있다고 착각하면 절대 안 됩니다.** 반드시 (b) 서명란(운전원/설비담당 칸) 자체 안에 실제 필기 흔적이 있는지 별도로 확인하세요. 이 항목은 여러 서명란 중 어떤 칸이든 상관없이, 서명란 안에 서명 흔적이 하나라도 보이면 pass로 판정하세요(운전원 칸에만 있어도 되고, 설비담당 칸에만 있어도 되고, 둘 다 있어도 됨 — 반드시 둘 다 채워질 필요는 없음). 오직 서명란 전체(운전원·설비담당 칸 모두)에 체크박스 표시 말고는 아무 필기 흔적도 없이 완전히 비어있을 때만 fail로 판정하세요.\n\nstatus: pass=관련 칸/란 모두 명확히 기재완료(또는 LOTO 발행번호란이 비어있는 경우), fail=명백히 누락/불완전한 것이 보임, na=해당없음(작업특성상 불필요 포함), unknown=이미지로 확신 어려움(사람이 재확인 필요)\n\n검토항목:\n"+crit+"\n\n추가로 문서 상단에서 아래 정보도 찾아서 함께 추출하세요. **매우 중요: 이 정보들은 반드시 문서에 실제로 적혀 있는 글자를 옮겨적으세요. 절대 다른 칸의 값을 가져오거나, 문서에 없는 이름/부서명을 지어내지 마세요. 다만 글씨가 다소 흐릿하거나 필기체라도, 그 칸 자체에 뭔가 적혀 있다면 최대한 판독해서 가장 근접하게 읽은 값을 기입하세요(빈칸으로 남기지 말 것). 정말로 그 칸 자체가 비어있어서 아무것도 적혀 있지 않은 경우에만 빈 문자열(\"\")로 남겨두세요.**\n- workDate: 작업일자(허가기간의 시작일 등, 예: 2026-07-27)\n- dept: '작업책임자' 항목의 '소속:' 바로 뒤에 기재된 값 그대로 (예: HPS환경설비)\n- teamLeader: 상단 결재란 매트릭스에서 '감독 확인(EES)' 열(신청/운전 승인 열이 아님)의 '팀장' 행에 실제로 적힌 성명 그대로. 다른 열의 팀장이나 다른 인물과 혼동하지 말 것.\n- workName: 작업명\n"+dbContext+"\nJSON만 출력 (다른 텍스트 없이):\n{\"results\":{\"id\":{\"status\":\"pass|fail|na|unknown\",\"note\":\"15자이내\"}},\"summary\":\"50자이내\",\"meta\":{\"workDate\":\"\",\"dept\":\"\",\"teamLeader\":\"\",\"workName\":\"\"}"+( dbItems.length>0 ? ",\"riskDeficiency\":[\"DB에 있으나 허가서 위험성평가에 누락된 위험요인\"],\"measureDeficiency\":[\"위험요인은 있으나 안전대책이 미흡한 항목\"]" : "" )+"}"});
 
       var resp, att = 0;
       while (att < 5) {
@@ -474,6 +609,8 @@ function App() {
         }
       });
       setReviewResults(r); setReviewNotes(n); setReviewSummary(parsed.summary||"");
+      setReviewRiskDeficiency(Array.isArray(parsed.riskDeficiency) ? parsed.riskDeficiency : []);
+      setReviewMeasureDeficiency(Array.isArray(parsed.measureDeficiency) ? parsed.measureDeficiency : []);
       var items = CRITERIA[selCat]||[];
       setActiveGroup(items.length?getTag(items[0].label):null);
       var meta = parsed.meta||{};
@@ -501,20 +638,210 @@ function App() {
       onLogin={function(u){setCurrentUser(u);setScreen("main");}}
       onRegister={function(u){saveUsers(u);setScreen("login");}}/>;
   }
+
+  // JSA 업로드 화면
+  if (screen==="jsa_review") {
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="jsa" onJSA={startJSAReview}/>
+      <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
+        <div style={{maxWidth:640}}>
+          <button onClick={function(){setScreen("main");}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13,marginBottom:"1rem"}}>← 메인으로</button>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem"}}>
+            <span style={{fontSize:28}}>⚠️</span>
+            <div><h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>위험성평가 적정성 검토</h2>
+            <p style={{margin:0,fontSize:12,color:C.gray}}>JSA(Job Safety Analysis) 문서를 AI로 검토합니다 · PDF, Excel, 이미지 지원</p></div>
+          </div>
+          <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{background:C.navyMid,padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>📁 문서 업로드 (PDF / Excel / 이미지)</span></div>
+            <div style={{padding:"1.25rem"}}>
+              <div onClick={function(){jsaFileRef.current.click();}}
+                onDragOver={function(e){e.preventDefault();}}
+                onDrop={function(e){e.preventDefault();var f=e.dataTransfer.files[0];if(f)setJsaFile(f);}}
+                style={{border:"2px dashed #cbd5e1",borderRadius:10,padding:"2rem",textAlign:"center",cursor:"pointer",background:"#f8fafc",marginBottom:12}}>
+                {jsaFile
+                  ? <div>
+                      <p style={{margin:0,fontSize:14,fontWeight:600,color:C.navy}}>✅ {jsaFile.name}</p>
+                      <p style={{margin:"4px 0 0",fontSize:12,color:C.gray}}>{(jsaFile.size/1024).toFixed(0)} KB</p>
+                    </div>
+                  : <div>
+                      <p style={{margin:0,fontSize:24}}>📄</p>
+                      <p style={{margin:"8px 0 0",fontSize:13,color:C.gray}}>파일을 드래그하거나 클릭하여 선택</p>
+                      <p style={{margin:"4px 0 0",fontSize:11,color:C.textSub}}>PDF · xlsx · xls · 이미지(jpg/png)</p>
+                    </div>}
+              </div>
+              <input ref={jsaFileRef} type="file" accept=".pdf,.xlsx,.xls,.xlsm,.jpg,.jpeg,.png" style={{display:"none"}} onChange={function(e){if(e.target.files[0])setJsaFile(e.target.files[0]);}}/>
+              {jsaFile&&<button onClick={function(){setJsaFile(null);}} style={{fontSize:12,color:C.red,background:"none",border:"none",cursor:"pointer",marginBottom:8}}>✖ 파일 제거</button>}
+            </div>
+          </div>
+          <button onClick={analyzeJSA} disabled={!jsaFile}
+            style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:jsaFile?"#7c3aed":"#d1d5db",color:"#fff",fontSize:14,fontWeight:700,cursor:jsaFile?"pointer":"default"}}>
+            🔍 AI 위험성평가 검토 시작
+          </button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // JSA 로딩 화면
+  if (screen==="jsa_loading") {
+    return <div style={{display:"flex",height:"100vh",background:C.navy,alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+      <span style={{fontSize:48}}>⚠️</span>
+      <div style={{width:44,height:44,borderRadius:"50%",border:"3px solid "+C.navyLt,borderTop:"3px solid #7c3aed",animation:"spin 0.9s linear infinite"}}/>
+      <p style={{color:C.text,fontSize:15,fontWeight:600,margin:0}}>위험성평가 검토 중...</p>
+      <p style={{color:C.textSub,fontSize:13,margin:0}}>{loadMsg}</p>
+    </div>;
+  }
+
+  // JSA 결과 화면
+  if (screen==="jsa_result" && jsaResult) {
+    var jr = jsaResult;
+    var jItems = jr.items||[];
+    var filterOpts = ["전체","적정","부적정","보완필요","무관","불명확"];
+    var filtered = jsaFilter==="전체" ? jItems : jItems.filter(function(it){
+      if(jsaFilter==="적정") return it.adequacy==="적정";
+      if(jsaFilter==="부적정") return it.adequacy==="부적정";
+      if(jsaFilter==="보완필요") return it.adequacy==="보완필요";
+      if(jsaFilter==="무관") return it.relevance==="무관";
+      if(jsaFilter==="불명확") return it.relevance==="불명확";
+      return true;
+    });
+    var jScore = jr.overallScore||0;
+    var jJudge = jr.overallJudgment||"보완필요";
+    var judgeStyle = jJudge==="적정"
+      ? {bg:C.greenBg,color:C.green,border:C.greenBorder}
+      : jJudge==="부적정"
+      ? {bg:C.redBg,color:C.red,border:C.redBorder}
+      : {bg:C.amberBg,color:C.amber,border:C.amberBorder};
+    var adequacyCount = {적정:0,부적정:0,보완필요:0};
+    var relevanceCount = {관련:0,무관:0,불명확:0};
+    jItems.forEach(function(it){
+      if(adequacyCount.hasOwnProperty(it.adequacy)) adequacyCount[it.adequacy]++;
+      if(relevanceCount.hasOwnProperty(it.relevance)) relevanceCount[it.relevance]++;
+    });
+    return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="jsa" onJSA={startJSAReview}/>
+      <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
+        <div style={{maxWidth:800}}>
+          <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
+            <button onClick={startJSAReview} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13}}>← 다시 검토</button>
+            <span style={{color:C.gray,fontSize:13}}>|</span>
+            <button onClick={function(){setScreen("main");}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13}}>🏠 메인</button>
+          </div>
+          {/* 요약 배너 */}
+          <div style={{background:"linear-gradient(135deg,#5b21b6,#7c3aed)",borderRadius:14,padding:"1.25rem",marginBottom:"1rem",color:"#fff"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+              <div>
+                <p style={{margin:"0 0 2px",fontSize:11,opacity:0.8}}>⚠️ 위험성평가 적정성 검토 결과</p>
+                <h2 style={{margin:"0 0 4px",fontSize:16,fontWeight:700}}>{jr.workType||"작업 유형 미확인"}</h2>
+                <p style={{margin:0,fontSize:12,opacity:0.85}}>{jr.summary}</p>
+              </div>
+              <div style={{textAlign:"center",flexShrink:0}}>
+                <div style={{fontSize:32,fontWeight:700,lineHeight:1}}>{jScore}</div>
+                <div style={{fontSize:10,opacity:0.8}}>/ 100점</div>
+                <div style={{marginTop:4,background:judgeStyle.bg,color:judgeStyle.color,border:"1px solid "+judgeStyle.border,borderRadius:20,padding:"2px 12px",fontSize:12,fontWeight:700}}>{jJudge}</div>
+              </div>
+            </div>
+          </div>
+          {/* 통계 카드 */}
+          <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap"}}>
+            {[
+              {label:"전체 항목",val:jr.totalItems||jItems.length,bg:"#ede9fe",color:"#5b21b6"},
+              {label:"✅ 적정",val:adequacyCount["적정"],bg:C.greenBg,color:C.green},
+              {label:"⚠️ 보완필요",val:adequacyCount["보완필요"],bg:C.amberBg,color:C.amber},
+              {label:"❌ 부적정",val:adequacyCount["부적정"],bg:C.redBg,color:C.red},
+              {label:"🔗 무관항목",val:relevanceCount["무관"],bg:C.grayBg,color:C.gray},
+            ].map(function(s){return <div key={s.label} style={{flex:1,minWidth:80,background:s.bg,borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:700,color:s.color}}>{s.val}</div>
+              <div style={{fontSize:11,color:s.color,marginTop:2}}>{s.label}</div>
+            </div>;})}
+          </div>
+          {/* 필터 */}
+          <div style={{display:"flex",gap:6,marginBottom:"1rem",flexWrap:"wrap"}}>
+            {filterOpts.map(function(f){
+              var cnt = f==="전체"?jItems.length:jItems.filter(function(it){
+                if(f==="적정") return it.adequacy==="적정";
+                if(f==="부적정") return it.adequacy==="부적정";
+                if(f==="보완필요") return it.adequacy==="보완필요";
+                if(f==="무관") return it.relevance==="무관";
+                if(f==="불명확") return it.relevance==="불명확";
+                return false;
+              }).length;
+              return <button key={f} onClick={function(){setJsaFilter(f);}}
+                style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(jsaFilter===f?"#7c3aed":"#d1d5db"),background:jsaFilter===f?"#7c3aed":"#fff",color:jsaFilter===f?"#fff":C.gray}}>
+                {f} ({cnt})
+              </button>;
+            })}
+          </div>
+          {/* 항목 테이블 */}
+          <div style={{background:C.cardBg,borderRadius:12,boxShadow:"0 1px 6px rgba(0,0,0,0.08)",overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{background:C.navyMid,padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>📋 항목별 검토 결과 ({filtered.length}건)</span></div>
+            {filtered.length===0&&<p style={{padding:"2rem",textAlign:"center",color:C.gray,fontSize:13}}>해당 항목이 없습니다.</p>}
+            {filtered.map(function(it, idx){
+              var relStyle = it.relevance==="관련"
+                ? {bg:"#dcfce7",color:"#166534",border:"#86efac",label:"관련"}
+                : it.relevance==="무관"
+                ? {bg:C.grayBg,color:C.gray,border:C.grayBorder,label:"무관"}
+                : {bg:C.amberBg,color:C.amber,border:C.amberBorder,label:"불명확"};
+              var adqStyle = it.adequacy==="적정"
+                ? {bg:C.greenBg,color:C.green,border:C.greenBorder,label:"적정"}
+                : it.adequacy==="부적정"
+                ? {bg:C.redBg,color:C.red,border:C.redBorder,label:"부적정"}
+                : {bg:C.amberBg,color:C.amber,border:C.amberBorder,label:"보완필요"};
+              return <div key={idx} style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6"}}>
+                <div style={{display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#7c3aed",minWidth:20}}>#{it["번호"]||idx+1}</span>
+                  <div style={{flex:1,minWidth:200}}>
+                    <p style={{margin:"0 0 3px",fontSize:13,fontWeight:600,color:C.navy}}>{it["작업단계"]||"단계 미상"}</p>
+                    <p style={{margin:"0 0 2px",fontSize:12,color:C.gray}}>🔴 위험요인: {it["유해위험요인"]||"-"}</p>
+                    <p style={{margin:0,fontSize:12,color:C.gray}}>🛡️ 안전대책: {it["현재안전대책"]||"-"}</p>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+                    <div style={{display:"flex",gap:4}}>
+                      <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:relStyle.bg,color:relStyle.color,border:"1px solid "+relStyle.border,fontWeight:600}}>{relStyle.label}</span>
+                      <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:adqStyle.bg,color:adqStyle.color,border:"1px solid "+adqStyle.border,fontWeight:600}}>{adqStyle.label}</span>
+                    </div>
+                    <div style={{fontSize:12,color:"#7c3aed",fontWeight:700}}>{it.score}점</div>
+                    <div style={{width:80,height:4,background:"#ede9fe",borderRadius:2,overflow:"hidden"}}>
+                      <div style={{width:(it.score||0)+"%",height:"100%",background:"#7c3aed",borderRadius:2}}/>
+                    </div>
+                  </div>
+                </div>
+                {(it.issues&&it.issues.length>0||it.suggestion)&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f3f4f6"}}>
+                  {it.issues&&it.issues.map(function(iss,i){return <span key={i} style={{display:"inline-block",fontSize:11,background:C.redBg,color:C.red,border:"1px solid "+C.redBorder,borderRadius:4,padding:"1px 7px",margin:"2px 3px 2px 0"}}>⚠ {iss}</span>;})}
+                  {it.suggestion&&<p style={{margin:"4px 0 0",fontSize:11,color:"#7c3aed",background:"#f5f3ff",borderRadius:6,padding:"4px 8px"}}>💡 {it.suggestion}</p>}
+                </div>}
+              </div>;
+            })}
+          </div>
+          {/* 누락위험 & 중요발견 */}
+          {(jr.missingRisks&&jr.missingRisks.length>0)&&<div style={{background:C.amberBg,border:"1px solid "+C.amberBorder,borderRadius:10,padding:"12px 16px",marginBottom:10}}>
+            <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:C.amber}}>⚠️ 누락된 위험요인</p>
+            {jr.missingRisks.map(function(r,i){return <p key={i} style={{margin:"2px 0",fontSize:12,color:C.amber}}>• {r}</p>;})}
+          </div>}
+          {(jr.criticalFindings&&jr.criticalFindings.length>0)&&<div style={{background:C.redBg,border:"1px solid "+C.redBorder,borderRadius:10,padding:"12px 16px"}}>
+            <p style={{margin:"0 0 6px",fontSize:12,fontWeight:700,color:C.red}}>🚨 중요 발견사항</p>
+            {jr.criticalFindings.map(function(f,i){return <p key={i} style={{margin:"2px 0",fontSize:12,color:C.red}}>• {f}</p>;})}
+          </div>}
+        </div>
+      </div>
+    </div>;
+  }
+
   if (screen==="loading_review") {
     var lcat=CATEGORIES.find(function(c){return c.id===selCat;});
     return <LoadingScreen msg={loadMsg} cat={lcat}/>;
   }
   if (screen==="admin") {
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin"/>
+      <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} active="admin" onJSA={startJSAReview}/>
       <AdminContent users={users} history={history} onSave={saveUsers} onSaveHistory={saveHistory} onBack={function(){setScreen("main");}}/>
     </div>;
   }
   if (screen==="error") {
     var ecat=CATEGORIES.find(function(c){return c.id===selCat;});
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} onJSA={startJSAReview}/>
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{maxWidth:480,width:"100%",padding:"2rem",textAlign:"center"}}>
           <div style={{fontSize:56,marginBottom:"1rem"}}>⚠️</div>
@@ -533,7 +860,7 @@ function App() {
   if (screen==="review") {
     var rcat=CATEGORIES.find(function(c){return c.id===selCat;});
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} onJSA={startJSAReview}/>
       <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
         <div style={{maxWidth:720}}>
           <button onClick={function(){setScreen("main");}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:13,marginBottom:"1rem"}}>← 메인으로</button>
@@ -582,7 +909,7 @@ function App() {
     ritems.forEach(function(i){var t=getTag(i.label);if(!rgMap[t]){rgMap[t]=[];rgroups.push({tag:t,items:rgMap[t]});}rgMap[t].push(i);});
     var curGroup=rgroups.find(function(g){return g.tag===activeGroup;})||rgroups[0];
     return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+      <Sidebar cu={currentUser} users={users} sel={selCat} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} onJSA={startJSAReview}/>
       <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
         <div style={{maxWidth:720}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
@@ -635,6 +962,43 @@ function App() {
               </div>;
             })}
           </div>
+          {/* 위험성평가 DB 기반 미흡사항 */}
+          {(reviewRiskDeficiency.length>0||reviewMeasureDeficiency.length>0)&&<div style={{marginTop:"1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:15,fontWeight:700,color:C.navy}}>🔍 위험성평가 DB 비교 결과</span>
+              <span style={{fontSize:11,color:C.gray,background:C.bg,padding:"2px 8px",borderRadius:10,border:"1px solid #e5e7eb"}}>DB 등록 위험요인과 비교</span>
+            </div>
+            {reviewRiskDeficiency.length>0&&<div style={{background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:12,padding:"12px 16px",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                <span style={{fontSize:14}}>⚠️</span>
+                <span style={{fontWeight:700,fontSize:13,color:"#92400e"}}>예상위험 미흡 ({reviewRiskDeficiency.length}건)</span>
+                <span style={{fontSize:11,color:"#b45309"}}>— DB에 등록된 위험요인이 허가서에 누락됨</span>
+              </div>
+              {reviewRiskDeficiency.map(function(item,idx){
+                return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop:idx>0?"1px solid #fde68a":"none"}}>
+                  <span style={{color:"#f59e0b",fontWeight:700,fontSize:12,flexShrink:0,marginTop:1}}>{idx+1}.</span>
+                  <span style={{fontSize:12,color:"#78350f",lineHeight:1.5}}>{item}</span>
+                </div>;
+              })}
+            </div>}
+            {reviewMeasureDeficiency.length>0&&<div style={{background:"#fff1f2",border:"1px solid #f43f5e",borderRadius:12,padding:"12px 16px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                <span style={{fontSize:14}}>🚨</span>
+                <span style={{fontWeight:700,fontSize:13,color:"#9f1239"}}>안전대책 미흡 ({reviewMeasureDeficiency.length}건)</span>
+                <span style={{fontSize:11,color:"#be123c"}}>— 위험요인은 기재됐으나 안전대책이 불충분함</span>
+              </div>
+              {reviewMeasureDeficiency.map(function(item,idx){
+                return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop:idx>0?"1px solid #fecdd3":"none"}}>
+                  <span style={{color:"#f43f5e",fontWeight:700,fontSize:12,flexShrink:0,marginTop:1}}>{idx+1}.</span>
+                  <span style={{fontSize:12,color:"#881337",lineHeight:1.5}}>{item}</span>
+                </div>;
+              })}
+            </div>}
+          </div>}
+          {(jsaDB[selCat]&&jsaDB[selCat].items&&jsaDB[selCat].items.length>0)&&reviewRiskDeficiency.length===0&&reviewMeasureDeficiency.length===0&&<div style={{marginTop:"1rem",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:16}}>✅</span>
+            <span style={{fontSize:13,color:"#15803d",fontWeight:600}}>위험성평가 DB 비교 완료 — 미흡사항 없음</span>
+          </div>}
         </div>
       </div>
     </div>;
@@ -642,7 +1006,7 @@ function App() {
   // MAIN
   var myHist=history.filter(function(h){return currentUser&&currentUser.role!=="admin"?h.user===currentUser.name:true;});
   return <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
-    <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history}/>
+    <Sidebar cu={currentUser} users={users} sel={null} onSel={startReview} onAdmin={function(){setScreen("admin");}} onLogout={function(){setCurrentUser(null);setScreen("login");}} hist={history} onJSA={startJSAReview}/>
     <div style={{flex:1,padding:"1.5rem",overflowY:"auto"}}>
       <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyLt+")",borderRadius:14,padding:"1.5rem 2rem",marginBottom:"1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
@@ -713,7 +1077,7 @@ function LoadingScreen(props) {
 }
 
 function Sidebar(props) {
-  var cu=props.cu,sel=props.sel,onSel=props.onSel,onAdmin=props.onAdmin,onLogout=props.onLogout,hist=props.hist,active=props.active,users=props.users||[];
+  var cu=props.cu,sel=props.sel,onSel=props.onSel,onAdmin=props.onAdmin,onLogout=props.onLogout,hist=props.hist,active=props.active,users=props.users||[],onJSA=props.onJSA;
   var pendingCount = users.filter(function(u){return u.status==="pending";}).length;
   var counts={};
   CATEGORIES.forEach(function(c){counts[c.id]=hist.filter(function(h){return h.category===c.label&&(cu&&cu.role==="admin"||h.user===(cu?cu.name:""));}).length;});
@@ -737,6 +1101,13 @@ function Sidebar(props) {
         <span style={{flex:1,fontSize:12,color:sel===cat.id?C.text:C.textSub,textAlign:"left"}}>{cat.label}</span>
         {counts[cat.id]>0&&<span style={{fontSize:10,background:C.navyLt,color:C.textSub,padding:"1px 5px",borderRadius:8}}>{counts[cat.id]}</span>}
       </button>;})}
+      <div>
+        <p style={{margin:"12px 12px 4px",fontSize:10,color:C.textSub,fontWeight:600}}>추가 기능</p>
+        <button onClick={onJSA} style={{width:"100%",padding:"8px 14px",background:active==="jsa"?"#7c3aed22":"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderLeft:active==="jsa"?"3px solid #7c3aed":"3px solid transparent"}}>
+          <span style={{fontSize:16}}>⚠️</span>
+          <span style={{flex:1,fontSize:12,color:active==="jsa"?"#a78bfa":C.textSub,textAlign:"left"}}>위험성평가 검토</span>
+        </button>
+      </div>
       {cu&&cu.role==="admin"&&<div>
         <p style={{margin:"12px 12px 4px",fontSize:10,color:C.textSub,fontWeight:600}}>관리</p>
         <button onClick={onAdmin} style={{width:"100%",padding:"8px 14px",background:active==="admin"?C.gold+"22":"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:8,borderLeft:active==="admin"?"3px solid "+C.gold:"3px solid transparent"}}>
@@ -806,6 +1177,65 @@ function AdminContent(props) {
   var [tab,setTab]=React.useState("users");
   var [editingId,setEditingId]=React.useState(null);
   var [editDraft,setEditDraft]=React.useState({});
+  // 위험성평가 DB 관리 상태
+  var [dbSelCat,setDbSelCat]=React.useState("psm");
+  var [dbItems,setDbItems]=React.useState([]);
+  var [dbLoading,setDbLoading]=React.useState(false);
+  var [dbMsg,setDbMsg]=React.useState("");
+  var [dbStatus,setDbStatus]=React.useState(null); // null | "ok" | "err"
+  var dbFileRef=React.useRef();
+
+  // DB 탭 선택 시 Firebase에서 해당 작업유형 데이터 로드
+  React.useEffect(function(){
+    if(tab!=="jsadb") return;
+    setDbLoading(true); setDbMsg(""); setDbStatus(null);
+    db.collection("jsadb").doc(dbSelCat).get().then(function(snap){
+      if(snap.exists && snap.data().items) { setDbItems(snap.data().items); }
+      else { setDbItems([]); }
+      setDbLoading(false);
+    }).catch(function(e){ setDbItems([]); setDbLoading(false); setDbMsg("로드 오류: "+e.message); setDbStatus("err"); });
+  }, [tab, dbSelCat]);
+
+  function handleDbExcelUpload(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    setDbMsg("엑셀 파일 분석 중..."); setDbStatus(null); setDbLoading(true);
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var wb = XLSX.read(ev.target.result, {type:"binary"});
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(ws, {defval:""});
+        // 컬럼명 정규화 (공백/대소문자 허용)
+        var parsed = rows.map(function(row) {
+          var keys = Object.keys(row);
+          var find = function(kw) { return keys.find(function(k){ return k.replace(/\s/g,"").includes(kw); })||""; };
+          return {
+            "작업유형": row[find("작업유형")]||"",
+            "위험요인": row[find("위험요인")]||"",
+            "안전대책": row[find("안전대책")]||""
+          };
+        }).filter(function(r){ return r["위험요인"]; });
+        if(!parsed.length){ setDbMsg("위험요인 컬럼을 찾을 수 없습니다. 엑셀에 '작업유형/위험요인/안전대책' 컬럼이 있는지 확인하세요."); setDbStatus("err"); setDbLoading(false); return; }
+        setDbItems(parsed);
+        // Firebase 저장
+        db.collection("jsadb").doc(dbSelCat).set({items:parsed, updatedAt:new Date().toISOString()}).then(function(){
+          setDbMsg(parsed.length+"건 저장 완료!");
+          setDbStatus("ok"); setDbLoading(false);
+        }).catch(function(err){ setDbMsg("저장 오류: "+err.message); setDbStatus("err"); setDbLoading(false); });
+      } catch(err) { setDbMsg("파일 오류: "+err.message); setDbStatus("err"); setDbLoading(false); }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value="";
+  }
+
+  function clearDbCat() {
+    if(!confirm(CATEGORIES.find(function(c){return c.id===dbSelCat;}).label+" 위험성평가 DB를 전체 삭제하시겠습니까?")) return;
+    setDbLoading(true);
+    db.collection("jsadb").doc(dbSelCat).delete().then(function(){
+      setDbItems([]); setDbMsg("삭제 완료"); setDbStatus("ok"); setDbLoading(false);
+    }).catch(function(e){ setDbMsg("삭제 오류: "+e.message); setDbStatus("err"); setDbLoading(false); });
+  }
 
   function startEdit(h) {
     setEditingId(h.id);
@@ -843,8 +1273,8 @@ function AdminContent(props) {
         <button onClick={onBack} style={{background:C.navyMid,border:"none",color:C.textSub,cursor:"pointer",padding:"6px 12px",borderRadius:6,fontSize:13}}>← 메인</button>
         <h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.navy}}>👥 관리자 패널</h2>
       </div>
-      <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
-        {[["users","👤 회원 관리"+(users.filter(function(u){return u.status==="pending";}).length>0?" ("+users.filter(function(u){return u.status==="pending";}).length+")":"")],["history","📋 검토 이력"]].map(function(arr){return <button key={arr[0]} onClick={function(){setTab(arr[0]);}} style={{padding:"7px 16px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,border:"1px solid "+(tab===arr[0]?C.accent:"#e5e7eb"),background:tab===arr[0]?C.accent:"#fff",color:tab===arr[0]?"#fff":C.gray}}>{arr[1]}</button>;})}
+      <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap"}}>
+        {[["users","👤 회원 관리"+(users.filter(function(u){return u.status==="pending";}).length>0?" ("+users.filter(function(u){return u.status==="pending";}).length+")":"")],["history","📋 검토 이력"],["jsadb","⚠️ 위험성평가 DB"]].map(function(arr){return <button key={arr[0]} onClick={function(){setTab(arr[0]);}} style={{padding:"7px 16px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,border:"1px solid "+(tab===arr[0]?C.accent:"#e5e7eb"),background:tab===arr[0]?C.accent:"#fff",color:tab===arr[0]?"#fff":C.gray}}>{arr[1]}</button>;})}
       </div>
       {tab==="users"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
         <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px"}}><span style={{color:C.text,fontWeight:600,fontSize:13}}>회원 목록 ({users.length}명)</span></div>
@@ -864,6 +1294,49 @@ function AdminContent(props) {
             <button onClick={function(){onSave(users.filter(function(x){return x.id!==u.id;}));}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
           </div>}
         </div>;})}
+      </div>}
+      {tab==="jsadb"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
+        <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span style={{color:C.text,fontWeight:600,fontSize:13}}>⚠️ 위험성평가 위험요인 DB 관리</span>
+        </div>
+        <div style={{padding:"1rem"}}>
+          <p style={{margin:"0 0 12px",fontSize:12,color:C.gray,lineHeight:1.6}}>작업유형별 위험요인/안전대책 엑셀을 업로드하면 AI 검토 시 자동으로 비교하여 미흡사항을 추가 검출합니다.<br/>엑셀 컬럼: <b>작업유형 / 위험요인 / 안전대책</b></p>
+          {/* 작업유형 선택 */}
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+            {CATEGORIES.map(function(c){
+              var cnt = 0;
+              return <button key={c.id} onClick={function(){setDbSelCat(c.id);}} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:dbSelCat===c.id?700:400,cursor:"pointer",background:dbSelCat===c.id?c.color:"#fff",color:dbSelCat===c.id?"#fff":C.gray,border:"1px solid "+(dbSelCat===c.id?c.color:"#e5e7eb")}}>{c.emoji} {c.label}</button>;
+            })}
+          </div>
+          {/* 현재 선택 카테고리 상태 */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 12px",background:C.bg,borderRadius:8,border:"1px solid #e5e7eb"}}>
+            <span style={{fontSize:13,fontWeight:600,color:C.navy}}>{(CATEGORIES.find(function(c){return c.id===dbSelCat;})||{}).label}</span>
+            <span style={{fontSize:12,color:dbItems.length>0?C.green:C.gray,fontWeight:600}}>{dbLoading?"로딩 중...":dbItems.length>0?dbItems.length+"건 등록됨":"DB 없음"}</span>
+          </div>
+          {/* 업로드/삭제 버튼 */}
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <button onClick={function(){dbFileRef.current.click();}} disabled={dbLoading} style={{padding:"8px 16px",borderRadius:7,border:"none",background:C.accent,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>📤 엑셀 업로드</button>
+            {dbItems.length>0&&<button onClick={clearDbCat} disabled={dbLoading} style={{padding:"8px 16px",borderRadius:7,border:"1px solid "+C.redBorder,background:"#fff",color:C.red,fontSize:12,fontWeight:700,cursor:"pointer"}}>🗑️ DB 초기화</button>}
+            <input ref={dbFileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleDbExcelUpload}/>
+          </div>
+          {/* 메시지 */}
+          {dbMsg&&<div style={{marginBottom:10,padding:"8px 12px",borderRadius:7,background:dbStatus==="ok"?C.greenBg:dbStatus==="err"?C.redBg:"#f1f5f9",border:"1px solid "+(dbStatus==="ok"?C.green:dbStatus==="err"?C.redBorder:"#e2e8f0"),fontSize:12,color:dbStatus==="ok"?C.green:dbStatus==="err"?C.red:C.gray}}>{dbMsg}</div>}
+          {/* DB 항목 미리보기 */}
+          {dbItems.length>0&&<div style={{background:C.bg,borderRadius:8,overflow:"hidden",border:"1px solid #e5e7eb"}}>
+            <div style={{padding:"6px 12px",background:"#f8fafc",borderBottom:"1px solid #e5e7eb",fontSize:11,fontWeight:700,color:C.navy,display:"grid",gridTemplateColumns:"2fr 3fr",gap:8}}>
+              <span>위험요인</span><span>안전대책</span>
+            </div>
+            <div style={{maxHeight:300,overflowY:"auto"}}>
+              {dbItems.map(function(item,idx){
+                return <div key={idx} style={{display:"grid",gridTemplateColumns:"2fr 3fr",gap:8,padding:"6px 12px",borderBottom:idx<dbItems.length-1?"1px solid #f3f4f6":"none",fontSize:11,lineHeight:1.5}}>
+                  <span style={{color:C.navy,fontWeight:500}}>{item["위험요인"]}</span>
+                  <span style={{color:C.gray}}>{item["안전대책"]}</span>
+                </div>;
+              })}
+            </div>
+          </div>}
+          {!dbLoading&&dbItems.length===0&&<p style={{textAlign:"center",color:C.gray,fontSize:12,padding:"1rem"}}>이 작업유형에 등록된 DB가 없습니다. 엑셀 파일을 업로드하세요.</p>}
+        </div>
       </div>}
       {tab==="history"&&<div style={{background:"#fff",borderRadius:10,boxShadow:"0 1px 5px rgba(0,0,0,0.07)",overflow:"hidden"}}>
         <div style={{background:"linear-gradient(135deg,"+C.navy+","+C.navyMid+")",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
