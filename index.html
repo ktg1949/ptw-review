@@ -940,8 +940,10 @@ JSON만 출력 (다른 텍스트 없이):
               var gf=g.items.filter(function(i){return reviewResults[i.id]==="fail";}).length;
               var tc=TAG_COLORS[g.tag]||DTC;
               var isSel=curGroup&&curGroup.tag===g.tag;
+              var hasDbDeficiency = g.tag==="②위험성평가"&&(reviewRiskDeficiency.length>0||reviewMeasureDeficiency.length>0);
               return <button key={g.tag} onClick={function(){setActiveGroup(g.tag);}} style={{padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:isSel?700:400,cursor:"pointer",background:isSel?tc.bg:"#fff",color:isSel?tc.color:C.gray,border:"1px solid "+(isSel?tc.border:"#e5e7eb"),display:"flex",alignItems:"center",gap:4}}>
                 {gf>0&&<span style={{width:6,height:6,borderRadius:"50%",background:C.red,display:"inline-block"}}/>}
+                {hasDbDeficiency&&<span style={{width:6,height:6,borderRadius:"50%",background:"#f59e0b",display:"inline-block"}}/>}
                 {g.tag} {gp}/{g.items.length}
               </button>;
             })}
@@ -961,44 +963,45 @@ JSON만 출력 (다른 텍스트 없이):
                 <span style={{padding:"4px 12px",borderRadius:6,fontSize:12,fontWeight:700,background:SC[s].bg,color:SC[s].text,border:"1px solid "+SC[s].border,flexShrink:0}}>{SC[s].label}</span>
               </div>;
             })}
+            {/* ②위험성평가 그룹일 때 DB 비교 결과를 카드 내부 하단에 표시 */}
+            {curGroup&&curGroup.tag==="②위험성평가"&&jsaDB[selCat]&&jsaDB[selCat].items&&jsaDB[selCat].items.length>0&&<div style={{borderTop:"2px solid #e0f2fe",background:"#f8fbff"}}>
+              <div style={{padding:"8px 16px",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid #e0f2fe"}}>
+                <span style={{fontSize:12}}>🔍</span>
+                <span style={{fontSize:12,fontWeight:700,color:"#0369a1"}}>위험성평가 DB 적합성 검토</span>
+                <span style={{fontSize:11,color:"#64748b",marginLeft:"auto"}}>등록 위험요인 {jsaDB[selCat].items.length}건 비교</span>
+              </div>
+              {reviewRiskDeficiency.length===0&&reviewMeasureDeficiency.length===0&&<div style={{padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:14}}>✅</span>
+                <span style={{fontSize:12,color:"#15803d",fontWeight:600}}>DB 등록 위험요인 모두 적합 — 미흡사항 없음</span>
+              </div>}
+              {reviewRiskDeficiency.length>0&&<div style={{padding:"10px 16px",borderBottom:reviewMeasureDeficiency.length>0?"1px solid #fde68a":"none",background:"#fffbeb"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                  <span style={{fontSize:12}}>⚠️</span>
+                  <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>예상위험 미흡 {reviewRiskDeficiency.length}건</span>
+                  <span style={{fontSize:11,color:"#b45309"}}>— 허가서 위험성평가에 누락된 위험요인</span>
+                </div>
+                {reviewRiskDeficiency.map(function(item,idx){
+                  return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"3px 0",borderTop:idx>0?"1px solid #fde68a":"none"}}>
+                    <span style={{color:"#f59e0b",fontWeight:700,fontSize:11,flexShrink:0,minWidth:16}}>{idx+1}.</span>
+                    <span style={{fontSize:11,color:"#78350f",lineHeight:1.5}}>{item}</span>
+                  </div>;
+                })}
+              </div>}
+              {reviewMeasureDeficiency.length>0&&<div style={{padding:"10px 16px",background:"#fff1f2"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                  <span style={{fontSize:12}}>🚨</span>
+                  <span style={{fontSize:12,fontWeight:700,color:"#9f1239"}}>안전대책 미흡 {reviewMeasureDeficiency.length}건</span>
+                  <span style={{fontSize:11,color:"#be123c"}}>— 위험요인은 있으나 안전대책이 불충분</span>
+                </div>
+                {reviewMeasureDeficiency.map(function(item,idx){
+                  return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"3px 0",borderTop:idx>0?"1px solid #fecdd3":"none"}}>
+                    <span style={{color:"#f43f5e",fontWeight:700,fontSize:11,flexShrink:0,minWidth:16}}>{idx+1}.</span>
+                    <span style={{fontSize:11,color:"#881337",lineHeight:1.5}}>{item}</span>
+                  </div>;
+                })}
+              </div>}
+            </div>}
           </div>
-          {/* 위험성평가 DB 기반 미흡사항 */}
-          {(reviewRiskDeficiency.length>0||reviewMeasureDeficiency.length>0)&&<div style={{marginTop:"1rem"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-              <span style={{fontSize:15,fontWeight:700,color:C.navy}}>🔍 위험성평가 DB 비교 결과</span>
-              <span style={{fontSize:11,color:C.gray,background:C.bg,padding:"2px 8px",borderRadius:10,border:"1px solid #e5e7eb"}}>DB 등록 위험요인과 비교</span>
-            </div>
-            {reviewRiskDeficiency.length>0&&<div style={{background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:12,padding:"12px 16px",marginBottom:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                <span style={{fontSize:14}}>⚠️</span>
-                <span style={{fontWeight:700,fontSize:13,color:"#92400e"}}>예상위험 미흡 ({reviewRiskDeficiency.length}건)</span>
-                <span style={{fontSize:11,color:"#b45309"}}>— DB에 등록된 위험요인이 허가서에 누락됨</span>
-              </div>
-              {reviewRiskDeficiency.map(function(item,idx){
-                return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop:idx>0?"1px solid #fde68a":"none"}}>
-                  <span style={{color:"#f59e0b",fontWeight:700,fontSize:12,flexShrink:0,marginTop:1}}>{idx+1}.</span>
-                  <span style={{fontSize:12,color:"#78350f",lineHeight:1.5}}>{item}</span>
-                </div>;
-              })}
-            </div>}
-            {reviewMeasureDeficiency.length>0&&<div style={{background:"#fff1f2",border:"1px solid #f43f5e",borderRadius:12,padding:"12px 16px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                <span style={{fontSize:14}}>🚨</span>
-                <span style={{fontWeight:700,fontSize:13,color:"#9f1239"}}>안전대책 미흡 ({reviewMeasureDeficiency.length}건)</span>
-                <span style={{fontSize:11,color:"#be123c"}}>— 위험요인은 기재됐으나 안전대책이 불충분함</span>
-              </div>
-              {reviewMeasureDeficiency.map(function(item,idx){
-                return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop:idx>0?"1px solid #fecdd3":"none"}}>
-                  <span style={{color:"#f43f5e",fontWeight:700,fontSize:12,flexShrink:0,marginTop:1}}>{idx+1}.</span>
-                  <span style={{fontSize:12,color:"#881337",lineHeight:1.5}}>{item}</span>
-                </div>;
-              })}
-            </div>}
-          </div>}
-          {(jsaDB[selCat]&&jsaDB[selCat].items&&jsaDB[selCat].items.length>0)&&reviewRiskDeficiency.length===0&&reviewMeasureDeficiency.length===0&&<div style={{marginTop:"1rem",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:16}}>✅</span>
-            <span style={{fontSize:13,color:"#15803d",fontWeight:600}}>위험성평가 DB 비교 완료 — 미흡사항 없음</span>
-          </div>}
         </div>
       </div>
     </div>;
